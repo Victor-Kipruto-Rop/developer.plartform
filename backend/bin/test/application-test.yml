@@ -1,0 +1,27 @@
+spring:
+  config:
+    activate:
+      on-profile: test
+  datasource:
+    url: ${TEST_DATABASE_URL:jdbc:postgresql://localhost:5432/pesaguard_developer_platform_test}
+    username: ${TEST_DATABASE_USERNAME:postgres}
+    password: ${TEST_DATABASE_PASSWORD:}
+  jpa:
+    hibernate:
+      ddl-auto: validate
+  flyway:
+    clean-disabled: true
+
+pesaguard:
+  security:
+    registration-enabled: true
+    bcrypt-strength: 4
+    account-login-failure-limit: 3
+    ip-login-failure-limit: 10
+    login-failure-window: PT15M
+    invitation-accept-attempt-limit: 50
+    invitation-accept-window: PT15M
+  usage:
+    # Off during tests: a background rollup would race the suite and make
+    # results depend on timing.
+    rollup-enabled: false

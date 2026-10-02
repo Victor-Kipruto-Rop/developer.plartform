@@ -1,0 +1,133 @@
+{
+  "groups": [
+    {
+      "name": "pesaguard",
+      "type": "com.pesaguard.backend.config.ApplicationProperties",
+      "sourceType": "com.pesaguard.backend.config.ApplicationProperties"
+    },
+    {
+      "name": "pesaguard.oauth",
+      "type": "com.pesaguard.backend.config.OAuthProperties",
+      "sourceType": "com.pesaguard.backend.config.OAuthProperties"
+    },
+    {
+      "name": "pesaguard.platform",
+      "type": "com.pesaguard.backend.config.ApplicationProperties$Platform",
+      "sourceType": "com.pesaguard.backend.config.ApplicationProperties",
+      "sourceMethod": "public ApplicationProperties.@Valid @NotNull Platform platform() "
+    },
+    {
+      "name": "pesaguard.security",
+      "type": "com.pesaguard.backend.config.ApplicationProperties$Security",
+      "sourceType": "com.pesaguard.backend.config.ApplicationProperties",
+      "sourceMethod": "public ApplicationProperties.@Valid @NotNull Security security() "
+    }
+  ],
+  "properties": [
+    {
+      "name": "pesaguard.oauth.access-token-ttl",
+      "type": "java.time.Duration",
+      "sourceType": "com.pesaguard.backend.config.OAuthProperties"
+    },
+    {
+      "name": "pesaguard.oauth.authorization-code-ttl",
+      "type": "java.time.Duration",
+      "sourceType": "com.pesaguard.backend.config.OAuthProperties"
+    },
+    {
+      "name": "pesaguard.oauth.consent-request-ttl",
+      "type": "java.time.Duration",
+      "sourceType": "com.pesaguard.backend.config.OAuthProperties"
+    },
+    {
+      "name": "pesaguard.oauth.refresh-token-ttl",
+      "type": "java.time.Duration",
+      "sourceType": "com.pesaguard.backend.config.OAuthProperties"
+    },
+    {
+      "name": "pesaguard.oauth.throttle-window",
+      "type": "java.time.Duration",
+      "sourceType": "com.pesaguard.backend.config.OAuthProperties"
+    },
+    {
+      "name": "pesaguard.oauth.token-endpoint-attempt-limit",
+      "type": "java.lang.Integer",
+      "sourceType": "com.pesaguard.backend.config.OAuthProperties",
+      "defaultValue": 0
+    },
+    {
+      "name": "pesaguard.platform.operator-hmac-key",
+      "type": "java.lang.String",
+      "sourceType": "com.pesaguard.backend.config.ApplicationProperties$Platform"
+    },
+    {
+      "name": "pesaguard.security.account-login-failure-limit",
+      "type": "java.lang.Integer",
+      "sourceType": "com.pesaguard.backend.config.ApplicationProperties$Security",
+      "defaultValue": 0
+    },
+    {
+      "name": "pesaguard.security.allowed-origins",
+      "type": "java.util.List<java.net.URI>",
+      "sourceType": "com.pesaguard.backend.config.ApplicationProperties$Security"
+    },
+    {
+      "name": "pesaguard.security.audit-hmac-key",
+      "type": "java.lang.String",
+      "sourceType": "com.pesaguard.backend.config.ApplicationProperties$Security"
+    },
+    {
+      "name": "pesaguard.security.bcrypt-strength",
+      "type": "java.lang.Integer",
+      "sourceType": "com.pesaguard.backend.config.ApplicationProperties$Security",
+      "defaultValue": 0
+    },
+    {
+      "name": "pesaguard.security.credential-hmac-key",
+      "type": "java.lang.String",
+      "sourceType": "com.pesaguard.backend.config.ApplicationProperties$Security"
+    },
+    {
+      "name": "pesaguard.security.invitation-accept-attempt-limit",
+      "type": "java.lang.Integer",
+      "sourceType": "com.pesaguard.backend.config.ApplicationProperties$Security",
+      "defaultValue": 0
+    },
+    {
+      "name": "pesaguard.security.invitation-accept-window",
+      "type": "java.time.Duration",
+      "sourceType": "com.pesaguard.backend.config.ApplicationProperties$Security"
+    },
+    {
+      "name": "pesaguard.security.invitation-ttl",
+      "type": "java.time.Duration",
+      "sourceType": "com.pesaguard.backend.config.ApplicationProperties$Security"
+    },
+    {
+      "name": "pesaguard.security.ip-login-failure-limit",
+      "type": "java.lang.Integer",
+      "sourceType": "com.pesaguard.backend.config.ApplicationProperties$Security",
+      "defaultValue": 0
+    },
+    {
+      "name": "pesaguard.security.login-failure-window",
+      "type": "java.time.Duration",
+      "sourceType": "com.pesaguard.backend.config.ApplicationProperties$Security"
+    },
+    {
+      "name": "pesaguard.security.registration-enabled",
+      "type": "java.lang.Boolean",
+      "sourceType": "com.pesaguard.backend.config.ApplicationProperties$Security",
+      "defaultValue": false
+    },
+    {
+      "name": "pesaguard.security.session-ttl",
+      "type": "java.time.Duration",
+      "sourceType": "com.pesaguard.backend.config.ApplicationProperties$Security"
+    }
+  ],
+  "hints": [],
+  "ignored": {
+    "properties": []
+  }
+}

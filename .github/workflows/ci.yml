@@ -1,0 +1,179 @@
+name: PesaGuard Developer Platform CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: gradle
+      - name: Verify Gradle wrapper
+        working-directory: backend
+        run: ./gradlew --version
+      - name: Compile and test
+        working-directory: backend
+        # GitHub-hosted runners have Docker, so the Testcontainers PostgreSQL suite
+        # executes here for real. If that ever silently stops happening, the suite
+        # would report "skipped" instead of failing, so assert the count below.
+        run: ./gradlew test --no-daemon --stacktrace
+      - name: Assert database-backed tests actually ran
+        working-directory: backend
+        run: |
+          total=$(grep -ho 'tests="[0-9]*"' build/test-results/test/TEST-*.xml | grep -o '[0-9]*' | paste -sd+ | bc)
+          skipped=$(grep -ho 'skipped="[0-9]*"' build/test-results/test/TEST-*.xml | grep -o '[0-9]*' | paste -sd+ | bc)
+          echo "tests=$total skipped=$skipped"
+          if [ "$skipped" -ne 0 ]; then
+            echo "::error::Database-backed tests were skipped. Migration and Hibernate validation are unverified."
+            exit 1
+          fi
+      - name: Build boot jar
+        working-directory: backend
+        run: ./gradlew bootJar --no-daemon
+      - name: Secret-pattern scan
+        working-directory: .
+        run: |
+          if git grep -nE 'BEGIN (RSA|OPENSSH|EC|DSA) PRIVATE KEY|AKIA[0-9A-Z]{16}' -- ':!*.lock' ':!backend/build/**'; then
+            echo 'Potential secret material found.'
+            exit 1
+          fi
+      - name: Dependency vulnerability scan
+        uses: gradle/actions/dependency-submission@v4
+        with:
+          gradle-build-file: backend/build.gradle
+
+      - name: Generate SBOM (CycloneDX)
+        # Trivy produces the SBOM rather than a Gradle plugin: no new build
+        # dependency to resolve, and it works from the image just scanned.
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: pesaguard-developer-platform:ci
+          format: cyclonedx
+          output: sbom.cdx.json
+          upload-artifact: false
+      - name: Fail on vulnerable dependencies, secrets, and misconfiguration
+        working-directory: backend
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          scan-type: fs
+          scan-ref: .
+          scanners: vuln,secret,misconfig
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: '1'
+
+  image:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build image
+        run: docker build -t pesaguard-developer-platform:ci .
+      - name: Trivy image scan (fails on HIGH/CRITICAL)
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: pesaguard-developer-platform:ci
+          severity: HIGH,CRITICAL
+          exit-code: '1'
+  sast:
+    name: Static analysis
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@v4
+      # CodeQL over the Java build. Runs in parallel with the test job so a finding
+      # does not gate an unrelated build for as long as the suite takes.
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: java
+          queries: security-and-quality
+      - name: Perform CodeQL analysis
+        uses: github/codeql-action/analyze@v3
+        with:
+          category: '/language:java'
+  # ---------------------------------------------------------------------------
+  # Staging, smoke tests, then production behind a human approval gate.
+  #
+  # Smoke tests are a separate job rather than extra assertions inside the build
+  # job, because they run against a real deployment: they catch the class of
+  # failure that only appears once migrations, Redis, and a pod are all present.
+  # ---------------------------------------------------------------------------
+  staging:
+    needs: [backend, image]
+    runs-on: ubuntu-latest
+    environment: staging
+    steps:
+      - uses: actions/checkout@v4
+      - name: Deploy to staging
+        run: |
+          kubectl --kubeconfig="$STAGING_KUBECONFIG" -n staging apply -f infrastructure/kubernetes/
+          kubectl --kubeconfig="$STAGING_KUBECONFIG" -n staging rollout status \
+            deployment/pesaguard-developer-platform --timeout=5m
+      - name: Smoke test the developer API
+        run: |
+          base="$STAGING_URL"
+          for i in $(seq 1 30); do
+            if curl -fsS "$base/health/ready" >/dev/null; then break; fi
+            sleep 5
+          done
+          # A 401 is the expected answer for an unauthenticated protected route.
+          # A 200 here would mean authorization is not being enforced, which is a
+          # failure and not a pass.
+          code=$(curl -s -o /dev/null -w '%{http_code}' "$base/api/v1/scopes")
+          if [ "$code" != "401" ] && [ "$code" != "403" ]; then
+            echo "::error::Expected 401/403 from an unauthenticated protected route, got $code"
+            exit 1
+          fi
+          # The operator API must not be reachable without an operator token.
+          code=$(curl -s -o /dev/null -w '%{http_code}' "$base/internal/organizations")
+          if [ "$code" != "401" ]; then
+            echo "::error::Internal admin endpoint returned $code without a token"
+            exit 1
+          fi
+          curl -fsS "$base/health/live"
+
+  production:
+    needs: [staging]
+    runs-on: ubuntu-latest
+    # A human must approve. This is the gate that stops a green build from
+    # reaching customers without anyone deciding it should.
+    environment:
+      name: production
+      url: ${{ vars.PRODUCTION_URL }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Deploy to production
+        run: |
+          kubectl --kubeconfig="$PRODUCTION_KUBECONFIG" -n production apply -f infrastructure/kubernetes/
+          kubectl --kubeconfig="$PRODUCTION_KUBECONFIG" -n production rollout status \
+            deployment/pesaguard-developer-platform --timeout=10m
+      - name: Verify rollout
+        run: |
+          kubectl --kubeconfig="$PRODUCTION_KUBECONFIG" -n production get pods -l app.kubernetes.io/name=pesaguard-developer-platform
+          code=$(curl -s -o /dev/null -w '%{http_code}' "${{ vars.PRODUCTION_URL }}/health/ready")
+          if [ "$code" != "200" ]; then
+            echo "::error::Production readiness returned $code"
+            exit 1
+          fi
+      - name: Roll back on failure
+        if: failure()
+        run: |
+          # A failed production verification is not a reason to leave the bad
+          # revision serving traffic.
+          kubectl --kubeconfig="$PRODUCTION_KUBECONFIG" -n production rollout undo deployment/pesaguard-developer-platform

@@ -1,0 +1,322 @@
+openapi: 3.1.0
+info:
+  title: PesaGuard Developer Platform API
+  version: 0.1.0
+  description: Implemented secure developer-platform foundation. OAuth, billing, production environments, webhooks, and financial execution are out of scope.
+servers:
+  - {url: 'http://localhost:8080', description: Local development}
+security:
+  - {bearerAuth: []}
+paths:
+  /api/v1/auth/register:
+    post: {security: [], requestBody: {$ref: '#/components/requestBodies/Register'}, responses: {'201': {$ref: '#/components/responses/AuthCreated'}, '400': {$ref: '#/components/responses/Error'}, '409': {$ref: '#/components/responses/Error'}}}
+  /api/v1/auth/login:
+    post: {security: [], requestBody: {$ref: '#/components/requestBodies/Login'}, responses: {'200': {$ref: '#/components/responses/Auth'}, '401': {$ref: '#/components/responses/Error'}, '429': {$ref: '#/components/responses/RateLimited'}}}
+  /api/v1/auth/logout:
+    post: {responses: {'204': {description: Session revoked}, '401': {$ref: '#/components/responses/Error'}}}
+  /api/v1/auth/session:
+    get: {responses: {'200': {$ref: '#/components/responses/Data'}, '401': {$ref: '#/components/responses/Error'}}}
+  /api/v1/organization:
+    get: {responses: {'200': {$ref: '#/components/responses/Data'}, '401': {$ref: '#/components/responses/Error'}}}
+    post: {requestBody: {$ref: '#/components/requestBodies/CreateOrganization'}, responses: {'201': {$ref: '#/components/responses/Data'}, '403': {$ref: '#/components/responses/Error'}, '409': {$ref: '#/components/responses/Error'}}}
+    patch: {requestBody: {$ref: '#/components/requestBodies/UpdateOrganization'}, responses: {'200': {$ref: '#/components/responses/Data'}, '403': {$ref: '#/components/responses/Error'}, '404': {$ref: '#/components/responses/Error'}, '409': {$ref: '#/components/responses/Error'}}}
+    delete: {responses: {'200': {$ref: '#/components/responses/Data'}, '403': {$ref: '#/components/responses/Error'}, '404': {$ref: '#/components/responses/Error'}}}
+  /api/v1/organization/verify:
+    post: {requestBody: {$ref: '#/components/requestBodies/VerifyOrganization'}, responses: {'200': {$ref: '#/components/responses/Data'}, '403': {$ref: '#/components/responses/Error'}, '404': {$ref: '#/components/responses/Error'}, '409': {$ref: '#/components/responses/Error'}}}
+  /api/v1/organization/suspend:
+    post: {responses: {'200': {$ref: '#/components/responses/Data'}, '403': {$ref: '#/components/responses/Error'}, '404': {$ref: '#/components/responses/Error'}, '409': {$ref: '#/components/responses/Error'}}}
+  /api/v1/organization/restore:
+    post: {responses: {'200': {$ref: '#/components/responses/Data'}, '403': {$ref: '#/components/responses/Error'}, '404': {$ref: '#/components/responses/Error'}, '409': {$ref: '#/components/responses/Error'}}}
+  /api/v1/organization/disable:
+    post: {responses: {'200': {$ref: '#/components/responses/Data'}, '403': {$ref: '#/components/responses/Error'}, '404': {$ref: '#/components/responses/Error'}, '409': {$ref: '#/components/responses/Error'}}}
+  /api/v1/organization/ownership/transfer:
+    post: {requestBody: {$ref: '#/components/requestBodies/TransferOwnership'}, responses: {'200': {$ref: '#/components/responses/Data'}, '403': {$ref: '#/components/responses/Error'}, '404': {$ref: '#/components/responses/Error'}, '409': {$ref: '#/components/responses/Error'}}}
+  /api/v1/organization/security-settings:
+    get: {responses: {'200': {$ref: '#/components/responses/Data'}, '403': {$ref: '#/components/responses/Error'}}}
+    put: {requestBody: {$ref: '#/components/requestBodies/UpdateSecuritySettings'}, responses: {'200': {$ref: '#/components/responses/Data'}, '400': {$ref: '#/components/responses/Error'}, '403': {$ref: '#/components/responses/Error'}}}
+  /api/v1/organization/members:
+    get: {responses: {'200': {$ref: '#/components/responses/Data'}}}
+  /api/v1/organization/members/{membershipId}/history:
+    get: {parameters: [{$ref: '#/components/parameters/MembershipId'}], responses: {'200': {$ref: '#/components/responses/Data'}, '403': {$ref: '#/components/responses/Error'}, '404': {$ref: '#/components/responses/Error'}}}
+  /api/v1/organization/members/{membershipId}/status:
+    patch: {parameters: [{$ref: '#/components/parameters/MembershipId'}], requestBody: {$ref: '#/components/requestBodies/UpdateMemberStatus'}, responses: {'200': {$ref: '#/components/responses/Data'}, '403': {$ref: '#/components/responses/Error'}, '404': {$ref: '#/components/responses/Error'}, '409': {$ref: '#/components/responses/Error'}}}
+  /api/v1/organization/members/{membershipId}/role:
+    patch: {parameters: [{$ref: '#/components/parameters/MembershipId'}], requestBody: {$ref: '#/components/requestBodies/ChangeMemberRole'}, responses: {'200': {$ref: '#/components/responses/Data'}, '403': {$ref: '#/components/responses/Error'}, '404': {$ref: '#/components/responses/Error'}, '409': {$ref: '#/components/responses/Error'}}}
+  /api/v1/organization/invitations:
+    post: {requestBody: {$ref: '#/components/requestBodies/CreateInvitation'}, responses: {'201': {$ref: '#/components/responses/InvitationCreated'}, '400': {$ref: '#/components/responses/Error'}, '403': {$ref: '#/components/responses/Error'}, '409': {$ref: '#/components/responses/Error'}}}
+    get: {responses: {'200': {$ref: '#/components/responses/Data'}, '403': {$ref: '#/components/responses/Error'}}}
+  /api/v1/organization/invitations/accept:
+    post: {security: [], requestBody: {$ref: '#/components/requestBodies/AcceptInvitation'}, responses: {'201': {$ref: '#/components/responses/AuthCreated'}, '400': {$ref: '#/components/responses/Error'}, '401': {$ref: '#/components/responses/Error'}, '404': {$ref: '#/components/responses/Error'}, '409': {$ref: '#/components/responses/Error'}}}
+  /api/v1/organization/invitations/{invitationId}:
+    delete: {parameters: [{$ref: '#/components/parameters/InvitationId'}], responses: {'204': {description: Revoked}, '403': {$ref: '#/components/responses/Error'}, '404': {$ref: '#/components/responses/Error'}, '409': {$ref: '#/components/responses/Error'}}}
+  /api/v1/rbac/permissions:
+    get: {responses: {'200': {$ref: '#/components/responses/Data'}}}
+  /api/v1/rbac/permissions/effective:
+    get: {responses: {'200': {$ref: '#/components/responses/Data'}, '403': {$ref: '#/components/responses/Error'}}}
+  /api/v1/rbac/roles/built-in:
+    get: {responses: {'200': {$ref: '#/components/responses/Data'}}}
+  /api/v1/rbac/roles:
+    get: {responses: {'200': {$ref: '#/components/responses/Data'}, '403': {$ref: '#/components/responses/Error'}}}
+    post: {requestBody: {$ref: '#/components/requestBodies/CreateRole'}, responses: {'200': {$ref: '#/components/responses/Data'}, '400': {$ref: '#/components/responses/Error'}, '403': {$ref: '#/components/responses/Error'}, '409': {$ref: '#/components/responses/Error'}}}
+  /api/v1/rbac/roles/{roleId}:
+    patch: {parameters: [{$ref: '#/components/parameters/RoleId'}], requestBody: {$ref: '#/components/requestBodies/UpdateRole'}, responses: {'200': {$ref: '#/components/responses/Data'}, '400': {$ref: '#/components/responses/Error'}, '403': {$ref: '#/components/responses/Error'}, '404': {$ref: '#/components/responses/Error'}}}
+  /api/v1/rbac/roles/{roleId}/archive:
+    post: {parameters: [{$ref: '#/components/parameters/RoleId'}], responses: {'200': {$ref: '#/components/responses/Data'}, '403': {$ref: '#/components/responses/Error'}, '404': {$ref: '#/components/responses/Error'}}}
+  /api/v1/rbac/roles/{roleId}/restore:
+    post: {parameters: [{$ref: '#/components/parameters/RoleId'}], responses: {'200': {$ref: '#/components/responses/Data'}, '403': {$ref: '#/components/responses/Error'}, '404': {$ref: '#/components/responses/Error'}}}
+  /api/v1/rbac/roles/{roleId}/assignments:
+    post: {parameters: [{$ref: '#/components/parameters/RoleId'}], requestBody: {$ref: '#/components/requestBodies/GrantRole'}, responses: {'200': {$ref: '#/components/responses/Data'}, '400': {$ref: '#/components/responses/Error'}, '403': {$ref: '#/components/responses/Error'}, '404': {$ref: '#/components/responses/Error'}}}
+  /api/v1/rbac/role-assignments:
+    get: {responses: {'200': {$ref: '#/components/responses/Data'}, '403': {$ref: '#/components/responses/Error'}}}
+  /api/v1/rbac/role-assignments/{assignmentId}:
+    delete: {parameters: [{$ref: '#/components/parameters/AssignmentId'}], responses: {'204': {description: Revoked}, '403': {$ref: '#/components/responses/Error'}, '404': {$ref: '#/components/responses/Error'}}}
+  /api/v1/production-access/projects/{projectId}/requests:
+    post: {parameters: [{$ref: '#/components/parameters/ProjectId'}], requestBody: {$ref: '#/components/requestBodies/RequestProductionAccess'}, responses: {'201': {$ref: '#/components/responses/Data'}, '400': {$ref: '#/components/responses/Error'}, '403': {$ref: '#/components/responses/Error'}, '404': {$ref: '#/components/responses/Error'}}}
+  /api/v1/production-access/requests:
+    get: {responses: {'200': {$ref: '#/components/responses/Data'}, '403': {$ref: '#/components/responses/Error'}}}
+  /api/v1/production-access/requests/{requestId}/approve:
+    post: {parameters: [{$ref: '#/components/parameters/RequestId'}], requestBody: {$ref: '#/components/requestBodies/ReviewProductionAccess'}, responses: {'200': {$ref: '#/components/responses/Data'}, '400': {$ref: '#/components/responses/Error'}, '403': {$ref: '#/components/responses/Error'}, '404': {$ref: '#/components/responses/Error'}}}
+  /api/v1/production-access/requests/{requestId}/reject:
+    post: {parameters: [{$ref: '#/components/parameters/RequestId'}], requestBody: {$ref: '#/components/requestBodies/ReviewProductionAccess'}, responses: {'200': {$ref: '#/components/responses/Data'}, '403': {$ref: '#/components/responses/Error'}, '404': {$ref: '#/components/responses/Error'}}}
+  /api/v1/production-access/requests/{requestId}/cancel:
+    post: {parameters: [{$ref: '#/components/parameters/RequestId'}], responses: {'200': {$ref: '#/components/responses/Data'}, '403': {$ref: '#/components/responses/Error'}, '404': {$ref: '#/components/responses/Error'}}}
+  /api/v1/oauth/applications:
+    post: {requestBody: {$ref: '#/components/requestBodies/CreateApplication'}, responses: {'201': {$ref: '#/components/responses/ApplicationCreated'}, '400': {$ref: '#/components/responses/Error'}, '403': {$ref: '#/components/responses/Error'}}}
+    get: {responses: {'200': {$ref: '#/components/responses/Data'}, '403': {$ref: '#/components/responses/Error'}}}
+  /api/v1/oauth/applications/{applicationId}:
+    patch: {parameters: [{$ref: '#/components/parameters/ApplicationId'}], requestBody: {$ref: '#/components/requestBodies/UpdateApplication'}, responses: {'200': {$ref: '#/components/responses/Data'}, '400': {$ref: '#/components/responses/Error'}, '403': {$ref: '#/components/responses/Error'}, '404': {$ref: '#/components/responses/Error'}}}
+  /api/v1/oauth/applications/{applicationId}/verify:
+    post: {parameters: [{$ref: '#/components/parameters/ApplicationId'}], requestBody: {$ref: '#/components/requestBodies/VerifyApplication'}, responses: {'200': {$ref: '#/components/responses/Data'}, '403': {$ref: '#/components/responses/Error'}, '404': {$ref: '#/components/responses/Error'}}}
+  /api/v1/oauth/applications/{applicationId}/rotate-secret:
+    post: {parameters: [{$ref: '#/components/parameters/ApplicationId'}], responses: {'201': {$ref: '#/components/responses/ApplicationCreated'}, '403': {$ref: '#/components/responses/Error'}, '404': {$ref: '#/components/responses/Error'}}}
+  /api/v1/oauth/applications/{applicationId}/suspend:
+    post: {parameters: [{$ref: '#/components/parameters/ApplicationId'}], responses: {'200': {$ref: '#/components/responses/Data'}, '403': {$ref: '#/components/responses/Error'}, '404': {$ref: '#/components/responses/Error'}, '409': {$ref: '#/components/responses/Error'}}}
+  /api/v1/oauth/applications/{applicationId}/resume:
+    post: {parameters: [{$ref: '#/components/parameters/ApplicationId'}], responses: {'200': {$ref: '#/components/responses/Data'}, '403': {$ref: '#/components/responses/Error'}, '404': {$ref: '#/components/responses/Error'}, '409': {$ref: '#/components/responses/Error'}}}
+  /api/v1/oauth/applications/{applicationId}/revoke:
+    post: {parameters: [{$ref: '#/components/parameters/ApplicationId'}], responses: {'200': {$ref: '#/components/responses/Data'}, '403': {$ref: '#/components/responses/Error'}, '404': {$ref: '#/components/responses/Error'}}}
+  /api/v1/oauth/authorize:
+    post: {description: 'Records an authorization request. No code is issued until the resource owner approves the consent request.', requestBody: {$ref: '#/components/requestBodies/AuthorizationRequest'}, responses: {'200': {$ref: '#/components/responses/Data'}, '400': {$ref: '#/components/responses/Error'}, '401': {$ref: '#/components/responses/Error'}, '429': {$ref: '#/components/responses/RateLimited'}}}
+  /api/v1/oauth/consents:
+    get: {responses: {'200': {$ref: '#/components/responses/Data'}, '401': {$ref: '#/components/responses/Error'}}}
+  /api/v1/oauth/consents/{consentId}/approve:
+    post: {description: 'The only operation that issues an authorization code.', parameters: [{$ref: '#/components/parameters/ConsentId'}], responses: {'201': {$ref: '#/components/responses/Data'}, '401': {$ref: '#/components/responses/Error'}, '404': {$ref: '#/components/responses/Error'}, '409': {$ref: '#/components/responses/Error'}}}
+  /api/v1/oauth/consents/{consentId}/deny:
+    post: {parameters: [{$ref: '#/components/parameters/ConsentId'}], responses: {'204': {description: Denied}, '401': {$ref: '#/components/responses/Error'}, '404': {$ref: '#/components/responses/Error'}}}
+  /api/v1/oauth/token:
+    post: {security: [], description: 'Authorization-code and refresh-token grants. PKCE S256 is mandatory and refresh tokens rotate on every use.', requestBody: {$ref: '#/components/requestBodies/TokenRequest'}, responses: {'200': {$ref: '#/components/responses/TokenIssued'}, '400': {$ref: '#/components/responses/Error'}, '401': {$ref: '#/components/responses/Error'}, '429': {$ref: '#/components/responses/RateLimited'}}}
+  /api/v1/oauth/revoke:
+    post: {security: [], description: 'RFC 7009. Unknown tokens report success so the endpoint cannot probe token existence.', responses: {'204': {description: Revoked}, '401': {$ref: '#/components/responses/Error'}, '429': {$ref: '#/components/responses/RateLimited'}}}
+  /api/v1/oauth/introspect:
+    post: {security: [], description: 'RFC 7662 introspection. Requires client authentication.', responses: {'200': {$ref: '#/components/responses/Data'}, '401': {$ref: '#/components/responses/Error'}, '429': {$ref: '#/components/responses/RateLimited'}}}
+  /api/v1/sandboxes:
+    post: {description: 'Creates a sandbox against an existing SANDBOX environment. Any other environment type is refused.', requestBody: {$ref: '#/components/requestBodies/CreateSandbox'}, responses: {'201': {$ref: '#/components/responses/Data'}, '400': {$ref: '#/components/responses/Error'}, '403': {$ref: '#/components/responses/Error'}, '404': {$ref: '#/components/responses/Error'}, '409': {$ref: '#/components/responses/Error'}}}
+    get: {parameters: [{$ref: '#/components/parameters/ProjectId'}], responses: {'200': {$ref: '#/components/responses/Data'}, '403': {$ref: '#/components/responses/Error'}}}
+  /api/v1/sandboxes/{sandboxId}:
+    get: {parameters: [{$ref: '#/components/parameters/SandboxId'}], responses: {'200': {$ref: '#/components/responses/Data'}, '403': {$ref: '#/components/responses/Error'}, '404': {$ref: '#/components/responses/Error'}}}
+    delete: {description: 'Terminal. A deleted sandbox cannot be suspended, activated or reset.', parameters: [{$ref: '#/components/parameters/SandboxId'}, {$ref: '#/components/parameters/Reason'}], responses: {'200': {$ref: '#/components/responses/Data'}, '403': {$ref: '#/components/responses/Error'}, '404': {$ref: '#/components/responses/Error'}}}
+  /api/v1/sandboxes/{sandboxId}/activate:
+    post: {parameters: [{$ref: '#/components/parameters/SandboxId'}], responses: {'200': {$ref: '#/components/responses/Data'}, '403': {$ref: '#/components/responses/Error'}, '404': {$ref: '#/components/responses/Error'}, '409': {$ref: '#/components/responses/Error'}}}
+  /api/v1/sandboxes/{sandboxId}/suspend:
+    post: {parameters: [{$ref: '#/components/parameters/SandboxId'}, {$ref: '#/components/parameters/Reason'}], responses: {'200': {$ref: '#/components/responses/Data'}, '403': {$ref: '#/components/responses/Error'}, '404': {$ref: '#/components/responses/Error'}, '409': {$ref: '#/components/responses/Error'}}}
+  /api/v1/sandboxes/{sandboxId}/resume:
+    post: {description: 'An expired sandbox cannot be resumed.', parameters: [{$ref: '#/components/parameters/SandboxId'}], responses: {'200': {$ref: '#/components/responses/Data'}, '403': {$ref: '#/components/responses/Error'}, '404': {$ref: '#/components/responses/Error'}, '409': {$ref: '#/components/responses/Error'}}}
+  /api/v1/sandboxes/{sandboxId}/reset:
+    post: {description: 'Clears sandbox data. Does not change lifecycle status.', parameters: [{$ref: '#/components/parameters/SandboxId'}, {$ref: '#/components/parameters/Reason'}], responses: {'200': {$ref: '#/components/responses/Data'}, '403': {$ref: '#/components/responses/Error'}, '404': {$ref: '#/components/responses/Error'}}}
+  /api/v1/sandboxes/{sandboxId}/executions:
+    get: {parameters: [{$ref: '#/components/parameters/SandboxId'}, {$ref: '#/components/parameters/Limit'}], responses: {'200': {$ref: '#/components/responses/Data'}, '403': {$ref: '#/components/responses/Error'}, '404': {$ref: '#/components/responses/Error'}}}
+  /api/v1/sandboxes/{sandboxId}/limits:
+    get: {parameters: [{$ref: '#/components/parameters/SandboxId'}], responses: {'200': {$ref: '#/components/responses/Data'}, '403': {$ref: '#/components/responses/Error'}, '404': {$ref: '#/components/responses/Error'}}}
+    put: {parameters: [{$ref: '#/components/parameters/SandboxId'}], requestBody: {$ref: '#/components/requestBodies/UpdateSandboxLimits'}, responses: {'200': {$ref: '#/components/responses/Data'}, '400': {$ref: '#/components/responses/Error'}, '403': {$ref: '#/components/responses/Error'}, '404': {$ref: '#/components/responses/Error'}}}
+  /api/v1/scopes:
+    get: {description: 'The scope registry. Scopes are API permissions, distinct from RBAC portal permissions.', parameters: [{$ref: '#/components/parameters/IncludeDeprecated'}], responses: {'200': {$ref: '#/components/responses/Data'}, '403': {$ref: '#/components/responses/Error'}}}
+  /api/v1/scopes/{scopeName}:
+    get: {parameters: [{$ref: '#/components/parameters/ScopeName'}], responses: {'200': {$ref: '#/components/responses/Data'}, '403': {$ref: '#/components/responses/Error'}, '404': {$ref: '#/components/responses/Error'}}}
+  /api/v1/scopes/{scopeName}/deprecate:
+    post: {description: 'Marks a scope deprecated. The scope keeps working; callers are told what to migrate to.', parameters: [{$ref: '#/components/parameters/ScopeName'}], requestBody: {$ref: '#/components/requestBodies/DeprecateScope'}, responses: {'200': {$ref: '#/components/responses/Data'}, '400': {$ref: '#/components/responses/Error'}, '403': {$ref: '#/components/responses/Error'}, '404': {$ref: '#/components/responses/Error'}}}
+  /api/v1/scopes/{scopeName}/restrict:
+    post: {description: 'Restricts a scope further. A reason is required.', parameters: [{$ref: '#/components/parameters/ScopeName'}, {$ref: '#/components/parameters/Reason'}], responses: {'200': {$ref: '#/components/responses/Data'}, '400': {$ref: '#/components/responses/Error'}, '403': {$ref: '#/components/responses/Error'}, '404': {$ref: '#/components/responses/Error'}}}
+  /api/v1/scopes/assignments:
+    get: {parameters: [{$ref: '#/components/parameters/ApiKeyId'}], responses: {'200': {$ref: '#/components/responses/Data'}, '403': {$ref: '#/components/responses/Error'}}}
+    post: {description: 'Grants scopes to a credential, recording who granted each and at which scope version.', parameters: [{$ref: '#/components/parameters/ApiKeyId'}], requestBody: {$ref: '#/components/requestBodies/AssignScopes'}, responses: {'200': {$ref: '#/components/responses/Data'}, '400': {$ref: '#/components/responses/Error'}, '403': {$ref: '#/components/responses/Error'}}}
+  /api/v1/scopes/assignments/{assignmentId}:
+    delete: {parameters: [{$ref: '#/components/parameters/AssignmentId'}, {$ref: '#/components/parameters/Reason'}], responses: {'200': {$ref: '#/components/responses/Data'}, '403': {$ref: '#/components/responses/Error'}, '404': {$ref: '#/components/responses/Error'}}}
+  /api/v1/scopes/decisions/denied:
+    get: {description: 'Recent access denials with their per-factor trace, so a refusal can be explained.', parameters: [{$ref: '#/components/parameters/Limit'}], responses: {'200': {$ref: '#/components/responses/Data'}, '403': {$ref: '#/components/responses/Error'}}}
+  /api/v1/projects:
+    post: {requestBody: {$ref: '#/components/requestBodies/CreateProject'}, responses: {'200': {$ref: '#/components/responses/Data'}, '403': {$ref: '#/components/responses/Error'}, '409': {$ref: '#/components/responses/Error'}}}
+    get: {parameters: [{$ref: '#/components/parameters/Page'}, {$ref: '#/components/parameters/Size'}], responses: {'200': {$ref: '#/components/responses/Data'}}}
+  /api/v1/projects/{projectId}:
+    get: {parameters: [{$ref: '#/components/parameters/ProjectId'}], responses: {'200': {$ref: '#/components/responses/Data'}, '403': {$ref: '#/components/responses/Error'}, '404': {$ref: '#/components/responses/Error'}}}
+    patch: {parameters: [{$ref: '#/components/parameters/ProjectId'}], requestBody: {$ref: '#/components/requestBodies/UpdateProject'}, responses: {'200': {$ref: '#/components/responses/Data'}, '403': {$ref: '#/components/responses/Error'}, '404': {$ref: '#/components/responses/Error'}, '409': {$ref: '#/components/responses/Error'}}}
+  /api/v1/projects/{projectId}/archive:
+    post: {parameters: [{$ref: '#/components/parameters/ProjectId'}], responses: {'200': {$ref: '#/components/responses/Data'}, '403': {$ref: '#/components/responses/Error'}, '404': {$ref: '#/components/responses/Error'}}}
+  /api/v1/projects/{projectId}/restore:
+    post: {parameters: [{$ref: '#/components/parameters/ProjectId'}], responses: {'200': {$ref: '#/components/responses/Data'}, '403': {$ref: '#/components/responses/Error'}, '404': {$ref: '#/components/responses/Error'}}}
+  /api/v1/projects/{projectId}/deactivate:
+    post: {parameters: [{$ref: '#/components/parameters/ProjectId'}], responses: {'200': {$ref: '#/components/responses/Data'}, '403': {$ref: '#/components/responses/Error'}, '404': {$ref: '#/components/responses/Error'}}}
+  /api/v1/projects/{projectId}/activate:
+    post: {parameters: [{$ref: '#/components/parameters/ProjectId'}], responses: {'200': {$ref: '#/components/responses/Data'}, '403': {$ref: '#/components/responses/Error'}, '404': {$ref: '#/components/responses/Error'}}}
+  /api/v1/projects/{projectId}/ownership/transfer:
+    post: {parameters: [{$ref: '#/components/parameters/ProjectId'}], requestBody: {$ref: '#/components/requestBodies/TransferProjectOwnership'}, responses: {'200': {$ref: '#/components/responses/Data'}, '400': {$ref: '#/components/responses/Error'}, '403': {$ref: '#/components/responses/Error'}, '404': {$ref: '#/components/responses/Error'}}}
+  /api/v1/projects/{projectId}/members:
+    get: {parameters: [{$ref: '#/components/parameters/ProjectId'}], responses: {'200': {$ref: '#/components/responses/Data'}, '403': {$ref: '#/components/responses/Error'}, '404': {$ref: '#/components/responses/Error'}}}
+    post: {parameters: [{$ref: '#/components/parameters/ProjectId'}], requestBody: {$ref: '#/components/requestBodies/AddProjectMember'}, responses: {'200': {$ref: '#/components/responses/Data'}, '400': {$ref: '#/components/responses/Error'}, '403': {$ref: '#/components/responses/Error'}, '404': {$ref: '#/components/responses/Error'}, '409': {$ref: '#/components/responses/Error'}}}
+  /api/v1/projects/{projectId}/members/{memberId}/role:
+    patch: {parameters: [{$ref: '#/components/parameters/ProjectId'}, {$ref: '#/components/parameters/MemberId'}], requestBody: {$ref: '#/components/requestBodies/ChangeProjectMemberRole'}, responses: {'200': {$ref: '#/components/responses/Data'}, '403': {$ref: '#/components/responses/Error'}, '404': {$ref: '#/components/responses/Error'}}}
+  /api/v1/projects/{projectId}/members/{memberId}:
+    delete: {parameters: [{$ref: '#/components/parameters/ProjectId'}, {$ref: '#/components/parameters/MemberId'}], responses: {'204': {description: Revoked}, '403': {$ref: '#/components/responses/Error'}, '404': {$ref: '#/components/responses/Error'}, '409': {$ref: '#/components/responses/Error'}}}
+  /api/v1/projects/{projectId}/settings:
+    get: {parameters: [{$ref: '#/components/parameters/ProjectId'}], responses: {'200': {$ref: '#/components/responses/Data'}, '403': {$ref: '#/components/responses/Error'}, '404': {$ref: '#/components/responses/Error'}}}
+    put: {parameters: [{$ref: '#/components/parameters/ProjectId'}], requestBody: {$ref: '#/components/requestBodies/UpdateProjectSettings'}, responses: {'200': {$ref: '#/components/responses/Data'}, '400': {$ref: '#/components/responses/Error'}, '403': {$ref: '#/components/responses/Error'}, '404': {$ref: '#/components/responses/Error'}}}
+  /api/v1/projects/{projectId}/environments:
+    post: {parameters: [{$ref: '#/components/parameters/ProjectId'}], requestBody: {$ref: '#/components/requestBodies/CreateEnvironment'}, responses: {'200': {$ref: '#/components/responses/Data'}, '400': {$ref: '#/components/responses/Error'}, '403': {$ref: '#/components/responses/Error'}, '404': {$ref: '#/components/responses/Error'}, '409': {$ref: '#/components/responses/Error'}}}
+    get: {parameters: [{$ref: '#/components/parameters/ProjectId'}], responses: {'200': {$ref: '#/components/responses/Data'}, '403': {$ref: '#/components/responses/Error'}, '404': {$ref: '#/components/responses/Error'}}}
+  /api/v1/projects/{projectId}/environments/{environmentId}:
+    get: {parameters: [{$ref: '#/components/parameters/ProjectId'}, {$ref: '#/components/parameters/EnvironmentId'}], responses: {'200': {$ref: '#/components/responses/Data'}, '403': {$ref: '#/components/responses/Error'}, '404': {$ref: '#/components/responses/Error'}}}
+  /api/v1/projects/{projectId}/environments/{environmentId}/configuration:
+    put: {parameters: [{$ref: '#/components/parameters/ProjectId'}, {$ref: '#/components/parameters/EnvironmentId'}], requestBody: {$ref: '#/components/requestBodies/UpdateEnvironmentConfiguration'}, responses: {'200': {$ref: '#/components/responses/Data'}, '400': {$ref: '#/components/responses/Error'}, '403': {$ref: '#/components/responses/Error'}, '404': {$ref: '#/components/responses/Error'}, '409': {$ref: '#/components/responses/Error'}}}
+  /api/v1/projects/{projectId}/environments/{environmentId}/suspend:
+    post: {parameters: [{$ref: '#/components/parameters/ProjectId'}, {$ref: '#/components/parameters/EnvironmentId'}], responses: {'200': {$ref: '#/components/responses/Data'}, '403': {$ref: '#/components/responses/Error'}, '404': {$ref: '#/components/responses/Error'}, '409': {$ref: '#/components/responses/Error'}}}
+  /api/v1/projects/{projectId}/environments/{environmentId}/resume:
+    post: {parameters: [{$ref: '#/components/parameters/ProjectId'}, {$ref: '#/components/parameters/EnvironmentId'}], responses: {'200': {$ref: '#/components/responses/Data'}, '403': {$ref: '#/components/responses/Error'}, '404': {$ref: '#/components/responses/Error'}, '409': {$ref: '#/components/responses/Error'}}}
+  /api/v1/projects/{projectId}/environments/{environmentId}/deactivate:
+    post: {parameters: [{$ref: '#/components/parameters/ProjectId'}, {$ref: '#/components/parameters/EnvironmentId'}], responses: {'200': {$ref: '#/components/responses/Data'}, '403': {$ref: '#/components/responses/Error'}, '404': {$ref: '#/components/responses/Error'}}}
+  /api/v1/projects/{projectId}/environments/{environmentId}/promote:
+    post: {parameters: [{$ref: '#/components/parameters/ProjectId'}, {$ref: '#/components/parameters/EnvironmentId'}], requestBody: {$ref: '#/components/requestBodies/PromoteEnvironment'}, responses: {'200': {$ref: '#/components/responses/Data'}, '400': {$ref: '#/components/responses/Error'}, '403': {$ref: '#/components/responses/Error'}, '404': {$ref: '#/components/responses/Error'}, '409': {$ref: '#/components/responses/Error'}}}
+  /api/v1/projects/{projectId}/environments/{environmentId}/history:
+    get: {parameters: [{$ref: '#/components/parameters/ProjectId'}, {$ref: '#/components/parameters/EnvironmentId'}], responses: {'200': {$ref: '#/components/responses/Data'}, '403': {$ref: '#/components/responses/Error'}, '404': {$ref: '#/components/responses/Error'}}}
+  /api/v1/projects/{projectId}/environments/{environmentId}/api-keys:
+    post: {parameters: [{$ref: '#/components/parameters/ProjectId'}, {$ref: '#/components/parameters/EnvironmentId'}], requestBody: {$ref: '#/components/requestBodies/CreateApiKey'}, responses: {'201': {$ref: '#/components/responses/KeyCreated'}, '400': {$ref: '#/components/responses/Error'}, '403': {$ref: '#/components/responses/Error'}, '404': {$ref: '#/components/responses/Error'}}}
+    get: {parameters: [{$ref: '#/components/parameters/ProjectId'}, {$ref: '#/components/parameters/EnvironmentId'}], responses: {'200': {$ref: '#/components/responses/Data'}, '404': {$ref: '#/components/responses/Error'}}}
+  /api/v1/projects/{projectId}/environments/{environmentId}/api-keys/{keyId}:
+    delete: {parameters: [{$ref: '#/components/parameters/ProjectId'}, {$ref: '#/components/parameters/EnvironmentId'}, {$ref: '#/components/parameters/KeyId'}], responses: {'204': {description: Revoked}, '403': {$ref: '#/components/responses/Error'}, '404': {$ref: '#/components/responses/Error'}, '409': {$ref: '#/components/responses/Error'}}}
+  /api/v1/projects/{projectId}/environments/{environmentId}/api-keys/{keyId}/suspend:
+    post: {parameters: [{$ref: '#/components/parameters/ProjectId'}, {$ref: '#/components/parameters/EnvironmentId'}, {$ref: '#/components/parameters/KeyId'}], responses: {'200': {$ref: '#/components/responses/Data'}, '403': {$ref: '#/components/responses/Error'}, '404': {$ref: '#/components/responses/Error'}, '409': {$ref: '#/components/responses/Error'}}}
+  /api/v1/projects/{projectId}/environments/{environmentId}/api-keys/{keyId}/resume:
+    post: {parameters: [{$ref: '#/components/parameters/ProjectId'}, {$ref: '#/components/parameters/EnvironmentId'}, {$ref: '#/components/parameters/KeyId'}], responses: {'200': {$ref: '#/components/responses/Data'}, '403': {$ref: '#/components/responses/Error'}, '404': {$ref: '#/components/responses/Error'}, '409': {$ref: '#/components/responses/Error'}}}
+  /api/v1/projects/{projectId}/environments/{environmentId}/api-keys/{keyId}/rotate:
+    post: {parameters: [{$ref: '#/components/parameters/ProjectId'}, {$ref: '#/components/parameters/EnvironmentId'}, {$ref: '#/components/parameters/KeyId'}], responses: {'201': {$ref: '#/components/responses/KeyCreated'}, '403': {$ref: '#/components/responses/Error'}, '404': {$ref: '#/components/responses/Error'}, '409': {$ref: '#/components/responses/Error'}}}
+  /api/v1/projects/{projectId}/environments/{environmentId}/api-keys/{keyId}/history:
+    get: {parameters: [{$ref: '#/components/parameters/ProjectId'}, {$ref: '#/components/parameters/EnvironmentId'}, {$ref: '#/components/parameters/KeyId'}], responses: {'200': {$ref: '#/components/responses/Data'}, '403': {$ref: '#/components/responses/Error'}, '404': {$ref: '#/components/responses/Error'}}}
+  /api/v1/audit-events:
+    get: {parameters: [{$ref: '#/components/parameters/Page'}, {$ref: '#/components/parameters/Size'}], responses: {'200': {$ref: '#/components/responses/Data'}, '403': {$ref: '#/components/responses/Error'}}}
+  /api/v1/audit-events/verify:
+    get: {responses: {'200': {$ref: '#/components/responses/Data'}, '403': {$ref: '#/components/responses/Error'}}}
+  /health/live:
+    get: {security: [], responses: {'200': {description: Process is alive}}}
+  /health/ready:
+    get: {security: [], responses: {'200': {description: Dependencies are ready}, '503': {description: Dependency unavailable}}}
+components:
+  securitySchemes:
+    bearerAuth: {type: http, scheme: bearer, bearerFormat: opaque}
+  parameters:
+    Page: {name: page, in: query, schema: {type: integer, minimum: 0, default: 0}}
+    Size: {name: size, in: query, schema: {type: integer, minimum: 1, maximum: 100, default: 20}}
+    ProjectId: {name: projectId, in: path, required: true, schema: {type: string, format: uuid}}
+    EnvironmentId: {name: environmentId, in: path, required: true, schema: {type: string, format: uuid}}
+    KeyId: {name: keyId, in: path, required: true, schema: {type: string, format: uuid}}
+    MembershipId: {name: membershipId, in: path, required: true, schema: {type: string, format: uuid}}
+    InvitationId: {name: invitationId, in: path, required: true, schema: {type: string, format: uuid}}
+    RoleId: {name: roleId, in: path, required: true, schema: {type: string, format: uuid}}
+    AssignmentId: {name: assignmentId, in: path, required: true, schema: {type: string, format: uuid}}
+    MemberId: {name: memberId, in: path, required: true, schema: {type: string, format: uuid}}
+    RequestId: {name: requestId, in: path, required: true, schema: {type: string, format: uuid}}
+    ApplicationId: {name: applicationId, in: path, required: true, schema: {type: string, format: uuid}}
+    ConsentId: {name: consentId, in: path, required: true, schema: {type: string, format: uuid}}
+    ScopeName: {name: scopeName, in: path, required: true, schema: {type: string, pattern: '^[a-z][a-z0-9-]{1,47}:[a-z][a-z0-9-]{1,23}$'}}
+    SandboxId: {name: sandboxId, in: path, required: true, schema: {type: string, format: uuid}}
+    AssignmentId: {name: assignmentId, in: path, required: true, schema: {type: string, format: uuid}}
+    ApiKeyId: {name: apiKeyId, in: query, required: true, schema: {type: string, format: uuid}}
+    Reason: {name: reason, in: query, required: false, schema: {type: string, maxLength: 500}}
+    Limit: {name: limit, in: query, required: false, schema: {type: integer, minimum: 1, maximum: 200, default: 50}}
+    IncludeDeprecated: {name: includeDeprecated, in: query, required: false, schema: {type: boolean, default: false}}
+  requestBodies:
+    Register: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/RegisterRequest'}}}}
+    Login: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/LoginRequest'}}}}
+    CreateOrganization: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/CreateOrganizationRequest'}}}}
+    UpdateOrganization: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/UpdateOrganizationRequest'}}}}
+    VerifyOrganization: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/VerifyOrganizationRequest'}}}}
+    TransferOwnership: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/TransferOwnershipRequest'}}}}
+    UpdateSecuritySettings: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/UpdateSecuritySettingsRequest'}}}}
+    CreateInvitation: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/CreateInvitationRequest'}}}}
+    AcceptInvitation: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/AcceptInvitationRequest'}}}}
+    UpdateMemberStatus: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/UpdateMemberStatusRequest'}}}}
+    ChangeMemberRole: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/ChangeMemberRoleRequest'}}}}
+    CreateProject: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/CreateProjectRequest'}}}}
+    CreateEnvironment: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/CreateEnvironmentRequest'}}}}
+    UpdateProject: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/UpdateProjectRequest'}}}}
+    TransferProjectOwnership: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/TransferProjectOwnershipRequest'}}}}
+    AddProjectMember: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/AddProjectMemberRequest'}}}}
+    ChangeProjectMemberRole: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/ChangeProjectMemberRoleRequest'}}}}
+    UpdateProjectSettings: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/UpdateProjectSettingsRequest'}}}}
+    UpdateEnvironmentConfiguration: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/UpdateEnvironmentConfigurationRequest'}}}}
+    PromoteEnvironment: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/PromoteEnvironmentRequest'}}}}
+    CreateRole: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/CreateRoleRequest'}}}}
+    UpdateRole: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/UpdateRoleRequest'}}}}
+    GrantRole: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/GrantRoleRequest'}}}}
+    RequestProductionAccess: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/RequestProductionAccessRequest'}}}}
+    ReviewProductionAccess: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/ProductionAccessReviewRequest'}}}}
+    CreateApiKey: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/CreateApiKeyRequest'}}}}
+    CreateApplication: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/CreateApplicationRequest'}}}}
+    UpdateApplication: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/UpdateApplicationRequest'}}}}
+    VerifyApplication: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/VerifyApplicationRequest'}}}}
+    AuthorizationRequest: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/AuthorizationRequestBody'}}}}
+    TokenRequest: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/TokenRequestBody'}}}}
+    AssignScopes: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/AssignScopesRequest'}}}}
+    DeprecateScope: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/DeprecateScopeRequest'}}}}
+    CreateSandbox: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/CreateSandboxRequest'}}}}
+    UpdateSandboxLimits: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/UpdateSandboxLimitsRequest'}}}}
+  responses:
+    AuthCreated: {description: Created; access token is returned once, content: {application/json: {schema: {$ref: '#/components/schemas/AuthEnvelope'}}}}
+    Auth: {description: Authenticated, content: {application/json: {schema: {$ref: '#/components/schemas/AuthEnvelope'}}}}
+    KeyCreated: {description: One-time API key response; never cached, headers: {Cache-Control: {schema: {type: string, example: no-store}}}, content: {application/json: {schema: {$ref: '#/components/schemas/KeyEnvelope'}}}}
+    Data: {description: Successful response envelope, content: {application/json: {schema: {$ref: '#/components/schemas/Envelope'}}}}
+    Error: {description: Structured client error, content: {application/json: {schema: {$ref: '#/components/schemas/ErrorEnvelope'}}}}
+    RateLimited: {description: Rate limited, headers: {Retry-After: {schema: {type: integer}}}, content: {application/json: {schema: {$ref: '#/components/schemas/ErrorEnvelope'}}}}
+    InvitationCreated: {description: Invitation created; the invitation token is returned once and only stored as a hash, headers: {Cache-Control: {schema: {type: string, example: no-store}}}, content: {application/json: {schema: {$ref: '#/components/schemas/InvitationCreatedEnvelope'}}}}
+    ApplicationCreated: {description: Application or rotated secret. clientSecret appears exactly once and is only stored as an HMAC, headers: {Cache-Control: {schema: {type: string, example: no-store}}}, content: {application/json: {schema: {$ref: '#/components/schemas/ApplicationSecretEnvelope'}}}}
+    TokenIssued: {description: Issued access and refresh tokens. Token responses are never cached, headers: {Cache-Control: {schema: {type: string, example: no-store}}, Pragma: {schema: {type: string, example: no-cache}}}, content: {application/json: {schema: {$ref: '#/components/schemas/TokenEnvelope'}}}}
+  schemas:
+    RegisterRequest: {type: object, required: [email, password, displayName, organizationName], properties: {email: {type: string, format: email, maxLength: 320}, password: {type: string, format: password, minLength: 12, maxLength: 128}, displayName: {type: string, minLength: 2, maxLength: 120}, organizationName: {type: string, minLength: 2, maxLength: 120}}}
+    LoginRequest: {type: object, required: [email, password], properties: {email: {type: string, format: email}, password: {type: string, format: password}, organizationId: {type: string, format: uuid, description: Required when the account has memberships in more than one active organization}}}
+    CreateOrganizationRequest: {type: object, required: [name, type, metadata], properties: {name: {type: string, minLength: 2, maxLength: 120}, type: {type: string, enum: [DEVELOPER, ENTERPRISE, PARTNER]}, metadata: {type: object, description: Free-form organization metadata; key, depth and size limits are enforced and credential-like keys are rejected}}}
+    UpdateOrganizationRequest: {type: object, required: [name, type, metadata], properties: {name: {type: string, minLength: 2, maxLength: 120}, type: {type: string, enum: [DEVELOPER, ENTERPRISE, PARTNER]}, metadata: {type: object}}}
+    VerifyOrganizationRequest: {type: object, required: [reference], properties: {reference: {type: string, maxLength: 120}}}
+    TransferOwnershipRequest: {type: object, required: [membershipId], properties: {membershipId: {type: string, format: uuid}}}
+    UpdateSecuritySettingsRequest: {type: object, required: [allowedAuthMethods, sessionTtlMinutes, idleTimeoutMinutes, maxSessions, credentialMinLength, credentialMaxLength, mfaRequired, ipAllowlist, securityEventTypes], properties: {allowedAuthMethods: {type: array, items: {type: string, enum: [PASSWORD]}}, sessionTtlMinutes: {type: integer, minimum: 5, maximum: 10080}, idleTimeoutMinutes: {type: integer, minimum: 5, maximum: 10080}, maxSessions: {type: integer, minimum: 1, maximum: 100}, credentialMinLength: {type: integer, minimum: 12, maximum: 64}, credentialMaxLength: {type: integer, minimum: 24, maximum: 72}, mfaRequired: {type: boolean, description: Rejected while no MFA provider is configured}, ipAllowlist: {type: array, items: {type: string, description: IPv4/IPv6 address or CIDR range}}, securityEventTypes: {type: array, items: {type: string, enum: [LOGIN_FAILURE, MEMBERSHIP_CHANGED, SECURITY_SETTING_CHANGED, ORGANIZATION_LIFECYCLE, INVITATION_CREATED, INVITATION_ACCEPTED, INVITATION_REVOKED]}}}}
+    CreateInvitationRequest: {type: object, required: [email, role], properties: {email: {type: string, format: email, maxLength: 320}, role: {type: string, enum: [ADMIN, DEVELOPER, VIEWER]}}}
+    AcceptInvitationRequest: {type: object, required: [token, email, password], properties: {token: {type: string, maxLength: 512}, email: {type: string, format: email, maxLength: 320}, password: {type: string, format: password, minLength: 12, maxLength: 128}, displayName: {type: string, minLength: 2, maxLength: 120, description: Required only when the invited email does not yet have an account}}}
+    UpdateMemberStatusRequest: {type: object, required: [status], properties: {status: {type: string, enum: [ACTIVE, SUSPENDED, REVOKED]}, reason: {type: string, maxLength: 500}}}
+    ChangeMemberRoleRequest: {type: object, required: [role], properties: {role: {type: string, enum: [ADMIN, DEVELOPER, VIEWER]}}}
+    InvitationCreatedEnvelope: {type: object, required: [data, requestId], properties: {data: {type: object, required: [id, email, role, token, expiresAt], properties: {id: {type: string, format: uuid}, email: {type: string, format: email}, role: {type: string}, token: {type: string, description: Returned only when the invitation is created; stored server-side as a hash}, expiresAt: {type: string, format: date-time}}}, requestId: {type: string, format: uuid}}}
+    CreateProjectRequest: {type: object, required: [name, slug], properties: {name: {type: string, minLength: 2, maxLength: 120}, slug: {type: string, pattern: '^[a-z][a-z0-9-]{1,79}$'}}}
+    CreateEnvironmentRequest: {type: object, required: [name, type], properties: {name: {type: string, minLength: 2, maxLength: 80}, type: {type: string, enum: [DEVELOPMENT, SANDBOX, STAGING, PRODUCTION], description: A project may hold at most one environment per tier}}}
+    UpdateProjectRequest: {type: object, required: [name, metadata], properties: {name: {type: string, minLength: 2, maxLength: 120}, description: {type: string, maxLength: 500}, metadata: {type: object, description: Credential-like keys are rejected}}}
+    TransferProjectOwnershipRequest: {type: object, required: [userId], properties: {userId: {type: string, format: uuid, description: Must already be an active organization member}}}
+    AddProjectMemberRequest: {type: object, required: [userId, role], properties: {userId: {type: string, format: uuid}, role: {type: string, enum: [MANAGER, DEVELOPER, VIEWER]}}}
+    ChangeProjectMemberRoleRequest: {type: object, required: [role], properties: {role: {type: string, enum: [MANAGER, DEVELOPER, VIEWER]}}}
+    UpdateProjectSettingsRequest: {type: object, required: [settings], properties: {settings: {type: object}}}
+    UpdateEnvironmentConfigurationRequest: {type: object, required: [configuration], properties: {configuration: {type: object, description: Credential-like keys are rejected; secrets belong in environment credentials}}}
+    PromoteEnvironmentRequest: {type: object, required: [targetType], properties: {targetType: {type: string, enum: [DEVELOPMENT, SANDBOX, STAGING, PRODUCTION], description: Must be exactly one tier above the current tier}, reason: {type: string, maxLength: 500}}}
+    CreateRoleRequest: {type: object, required: [name, permissions], properties: {name: {type: string, minLength: 2, maxLength: 64}, description: {type: string, maxLength: 500}, permissions: {type: array, minItems: 1, maxItems: 50, uniqueItems: true, items: {type: string, description: Must be a catalog permission the caller already holds; request and review may not be combined}}}}
+    UpdateRoleRequest: {type: object, required: [name, permissions], properties: {name: {type: string, minLength: 2, maxLength: 64}, description: {type: string, maxLength: 500}, permissions: {type: array, minItems: 1, maxItems: 50, uniqueItems: true, items: {type: string}}}}
+    GrantRoleRequest: {type: object, required: [userId], properties: {userId: {type: string, format: uuid, description: Must be an active organization member}}}
+    RequestProductionAccessRequest: {type: object, required: [environmentId, reason], properties: {environmentId: {type: string, format: uuid}, reason: {type: string, minLength: 10, maxLength: 1000}}}
+    ProductionAccessReviewRequest: {type: object, properties: {note: {type: string, maxLength: 1000}, expiresIn: {type: string, description: Required to approve; ISO-8601 duration no longer than 7 days, example: PT2H}}}
+    CreateApiKeyRequest: {type: object, required: [name, scopes, expiresIn], properties: {name: {type: string, minLength: 2, maxLength: 120}, scopes: {type: array, minItems: 1, maxItems: 20, uniqueItems: true, items: {type: string}}, expiresIn: {type: string, example: PT24H}}}
+    CreateApplicationRequest: {type: object, required: [name, redirectUris, grantTypes, responseTypes, tokenEndpointAuthMethod, scopes], properties: {name: {type: string, minLength: 2, maxLength: 120}, description: {type: string, maxLength: 500}, redirectUris: {type: array, minItems: 1, maxItems: 10, uniqueItems: true, items: {type: string, format: uri, description: HTTPS required except loopback HTTP; matched exactly, never by prefix}}, grantTypes: {type: array, minItems: 1, maxItems: 2, uniqueItems: true, items: {type: string, enum: [authorization_code, refresh_token]}}, responseTypes: {type: array, minItems: 1, maxItems: 1, uniqueItems: true, items: {type: string, enum: [code]}}, tokenEndpointAuthMethod: {type: string, enum: [client_secret_basic], description: Only confidential-client authentication is supported}, scopes: {type: array, minItems: 1, maxItems: 20, uniqueItems: true, items: {type: string}}, metadata: {type: object}}}
+    UpdateApplicationRequest: {type: object, properties: {name: {type: string, minLength: 2, maxLength: 120}, description: {type: string, maxLength: 500}, redirectUris: {type: array, minItems: 1, maxItems: 10, uniqueItems: true, items: {type: string, format: uri}}, scopes: {type: array, minItems: 1, maxItems: 20, uniqueItems: true, items: {type: string}}, metadata: {type: object}}}
+    VerifyApplicationRequest: {type: object, required: [reference], properties: {reference: {type: string, maxLength: 120}}}
+    AuthorizationRequestBody: {type: object, required: [clientId, redirectUri, responseType, codeChallenge, codeChallengeMethod], properties: {clientId: {type: string, maxLength: 120}, redirectUri: {type: string, format: uri}, responseType: {type: string, enum: [code]}, scope: {type: string}, state: {type: string, maxLength: 512, description: Hashed for storage and returned to the client on approval}, codeChallenge: {type: string, minLength: 43, maxLength: 128}, codeChallengeMethod: {type: string, enum: [S256], description: S256 is mandatory; plain is rejected}}}
+    TokenRequestBody: {type: object, required: [grantType, clientId], properties: {grantType: {type: string, enum: [authorization_code, refresh_token]}, clientId: {type: string}, clientSecret: {type: string, description: Prefer HTTP Basic authentication; the form field exists for clients that cannot set headers}, code: {type: string}, redirectUri: {type: string, format: uri}, codeVerifier: {type: string, minLength: 43, maxLength: 128}, refreshToken: {type: string}, scope: {type: string}}}
+    ApplicationSecretEnvelope: {type: object, required: [data, requestId], properties: {data: {type: object, required: [id, clientId, clientSecret, status], properties: {id: {type: string, format: uuid}, clientId: {type: string}, clientSecret: {type: string, description: Returned exactly once and only stored as an HMAC}, status: {type: string, enum: [PENDING_VERIFICATION, ACTIVE, SUSPENDED, REVOKED]}}}, requestId: {type: string, format: uuid}}}
+    TokenEnvelope: {type: object, required: [data, requestId], properties: {data: {type: object, required: [accessToken, tokenType, expiresIn, refreshToken, scope], properties: {accessToken: {type: string}, tokenType: {type: string, example: Bearer}, expiresIn: {type: integer, example: 900}, refreshToken: {type: string, description: Rotated on every use; presenting a rotated token revokes the whole family}, scope: {type: string}}}, requestId: {type: string, format: uuid}}}
+    AssignScopesRequest: {type: object, required: [scopes], properties: {scopes: {type: array, minItems: 1, maxItems: 20, uniqueItems: true, items: {type: string, pattern: '^[a-z][a-z0-9-]{1,47}:[a-z][a-z0-9-]{1,23}$', description: Must exist in the registry; an unknown scope is rejected, never created}}}}
+    DeprecateScopeRequest: {type: object, properties: {replacedBy: {type: string, description: Scope to migrate to. Must exist in the registry and must not be the scope itself}, reason: {type: string, maxLength: 500}}}
+    CreateSandboxRequest: {type: object, required: [environmentId, name], properties: {environmentId: {type: string, format: uuid, description: Must reference an existing SANDBOX environment. Any other type is refused with ENVIRONMENT_NOT_SANDBOX.}, name: {type: string, minLength: 2, maxLength: 120}, description: {type: string, maxLength: 500}, ttl: {type: string, example: P30D, description: ISO-8601 duration between PT1H and P90D; defaults to P30D}}}
+    UpdateSandboxLimitsRequest: {type: object, required: [requestsPerMinute, burstRequests, maxApiKeys, maxCredentials, maxWebhookEndpoints, maxEventsPerMinute, maxRequestBodyBytes, maxResponseBodyBytes, executionTimeoutMs, maxHistoryEntries], properties: {requestsPerMinute: {type: integer, minimum: 1}, burstRequests: {type: integer, minimum: 1}, maxApiKeys: {type: integer, minimum: 1}, maxCredentials: {type: integer, minimum: 1}, maxWebhookEndpoints: {type: integer, minimum: 1}, maxEventsPerMinute: {type: integer, minimum: 1}, maxRequestBodyBytes: {type: integer, minimum: 1}, maxResponseBodyBytes: {type: integer, minimum: 1}, executionTimeoutMs: {type: integer, minimum: 1, maximum: 30000, description: Hard-capped at 30s regardless of what is requested}, maxHistoryEntries: {type: integer, minimum: 1, maximum: 1000}}}
+    Envelope: {type: object, required: [data, requestId], properties: {data: {type: object}, requestId: {type: string, format: uuid}}}
+    AuthEnvelope: {type: object, required: [data, requestId], properties: {data: {type: object, required: [accessToken, tokenType, expiresAt, user, organization], properties: {accessToken: {type: string}, tokenType: {type: string, example: Bearer}, expiresAt: {type: string, format: date-time}, user: {type: object}, organization: {type: object}}}, requestId: {type: string, format: uuid}}}
+    KeyEnvelope: {type: object, required: [data, requestId], properties: {data: {type: object, required: [id, name, key, keyPrefix, scopes, expiresAt], properties: {id: {type: string, format: uuid}, name: {type: string}, key: {type: string, description: Returned only in this response}, keyPrefix: {type: string}, scopes: {type: array, items: {type: string}}, expiresAt: {type: string, format: date-time}}}, requestId: {type: string, format: uuid}}}
+    ErrorEnvelope: {type: object, required: [error], properties: {error: {type: object, required: [code, message, requestId, timestamp, violations], properties: {code: {type: string}, message: {type: string}, requestId: {type: string, format: uuid}, timestamp: {type: string, format: date-time}, violations: {type: array, items: {type: object}}}}}}

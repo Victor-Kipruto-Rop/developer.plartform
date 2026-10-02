@@ -1,0 +1,120 @@
+spring:
+  application:
+    name: pesaguard-developer-platform
+  datasource:
+    url: ${DATABASE_URL:jdbc:postgresql://localhost:5432/pesaguard_developer_platform}
+    username: ${DATABASE_USERNAME:postgres}
+    password: ${DATABASE_PASSWORD:}
+    hikari:
+      maximum-pool-size: ${DATABASE_POOL_SIZE:10}
+      minimum-idle: ${DATABASE_MIN_IDLE:2}
+      connection-timeout: 3000
+      validation-timeout: 1000
+      # Logs the stack trace of any connection held longer than this. A connection
+      # leaked by a long transaction is otherwise invisible until it surfaces as
+      # pool exhaustion under load.
+      leak-detection-threshold: ${DATABASE_LEAK_DETECTION_MS:60000}
+      max-lifetime: ${DATABASE_POOL_MAX_LIFETIME_MS:1800000}
+      keepalive-time: ${DATABASE_POOL_KEEPALIVE_MS:120000}
+
+      # Sizing budget (Phase 20): every @Transactional method can hold one of
+      # these. PostgreSQL defaults to max_connections = 100, so at 10 per
+      # instance this platform runs ~10 instances before the database refuses
+      # connections outright. Divide DATABASE_POOL_SIZE against the server limit
+      # before raising it.
+  data:
+    redis:
+      # Connection settings for the distributed rate-limit counters. Spring reads
+      # these; they are not under pesaguard.ratelimit because that block selects
+      # the store, not the connection.
+      host: ${PESAGUARD_REDIS_HOST:localhost}
+      port: ${PESAGUARD_REDIS_PORT:6379}
+      timeout: ${PESAGUARD_REDIS_TIMEOUT:500ms}
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        jdbc:
+          time_zone: UTC
+        order_inserts: true
+        order_updates: true
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+  jackson:
+    default-property-inclusion: non_null
+    time-zone: UTC
+
+server:
+  shutdown: graceful
+  error:
+    include-message: never
+    include-stacktrace: never
+
+spring.lifecycle.timeout-per-shutdown-phase: 20s
+
+management:
+  endpoints:
+    web:
+      exposure:
+        # prometheus is what the deployment's scrape annotation targets; without it the
+        # monitoring surface is JSON that nothing can alert on.
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      probes:
+        enabled: true
+      show-details: never
+  health:
+    livenessstate:
+      enabled: true
+    readinessstate:
+      enabled: true
+
+pesaguard:
+  oauth:
+    authorization-code-ttl: ${PESAGUARD_OAUTH_CODE_TTL:PT5M}
+    access-token-ttl: ${PESAGUARD_OAUTH_ACCESS_TOKEN_TTL:PT15M}
+    refresh-token-ttl: ${PESAGUARD_OAUTH_REFRESH_TOKEN_TTL:P30D}
+    consent-request-ttl: ${PESAGUARD_OAUTH_CONSENT_TTL:PT10M}
+    throttle-window: ${PESAGUARD_OAUTH_THROTTLE_WINDOW:PT15M}
+    token-endpoint-attempt-limit: ${PESAGUARD_OAUTH_ATTEMPT_LIMIT:60}
+  platform:
+    # Internal operator administration. A SEPARATE key from the credential and audit
+    # keys: sharing one would make a developer API key an operator token by
+    # formatting alone, which is the entire separation between the two surfaces.
+    operator-hmac-key: ${PESAGUARD_OPERATOR_HMAC_KEY:}  security:
+    allowed-origins: ${PESAGUARD_ALLOWED_ORIGINS:http://localhost:3000}
+    session-ttl: ${PESAGUARD_SESSION_TTL:PT8H}
+    credential-hmac-key: ${PESAGUARD_CREDENTIAL_HMAC_KEY}
+    audit-hmac-key: ${PESAGUARD_AUDIT_HMAC_KEY}
+    registration-enabled: ${PESAGUARD_REGISTRATION_ENABLED:false}
+    bcrypt-strength: ${PESAGUARD_BCRYPT_STRENGTH:12}
+    # Only enable where TLS is actually terminated. Sending HSTS over plain HTTP
+    # is meaningless, and in a non-production environment it pins the browser to
+    # the host for a year.
+    hsts-enabled: ${PESAGUARD_HSTS_ENABLED:false}
+    hsts-max-age-seconds: ${PESAGUARD_HSTS_MAX_AGE:31536000}
+    account-login-failure-limit: ${PESAGUARD_ACCOUNT_LOGIN_FAILURE_LIMIT:5}
+    ip-login-failure-limit: ${PESAGUARD_IP_LOGIN_FAILURE_LIMIT:30}
+    login-failure-window: ${PESAGUARD_LOGIN_FAILURE_WINDOW:PT15M}
+    invitation-ttl: ${PESAGUARD_INVITATION_TTL:PT168H}
+  invitation-accept-attempt-limit: ${PESAGUARD_INVITATION_ACCEPT_ATTEMPT_LIMIT:30}
+  invitation-accept-window: ${PESAGUARD_INVITATION_ACCEPT_WINDOW:PT15M}
+  ratelimit:
+    # redis is required for more than one instance: the in-memory store is
+    # per-instance, so N instances would admit N times the configured limit.
+    store: ${PESAGUARD_RATELIMIT_STORE:redis}
+
+  usage:
+    # Bounded on purpose. An unbounded queue grows until the heap is exhausted and
+    # takes the payment API down with it.
+    buffer-capacity: ${PESAGUARD_USAGE_BUFFER_CAPACITY:10000}
+    # Off in tests so a suite is not racing a background thread.
+    rollup-enabled: ${PESAGUARD_USAGE_ROLLUP_ENABLED:true}
+    minute-cron: ${PESAGUARD_USAGE_MINUTE_CRON:0 * * * * *}
+    hour-cron: ${PESAGUARD_USAGE_HOUR_CRON:0 5 * * * *}
+    day-cron: ${PESAGUARD_USAGE_DAY_CRON:0 10 0 * * *}
+    month-cron: ${PESAGUARD_USAGE_MONTH_CRON:0 20 0 1 * *}
