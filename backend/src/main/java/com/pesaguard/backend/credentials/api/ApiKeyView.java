@@ -18,5 +18,8 @@ public record ApiKeyView(
         long requestCount,
         UUID rotatedFromId,
         Set<String> ipAllowlist,
+        String lastUsedIp,
+        String lastUsedCountry,
+        String lastUsedDevice,
         Instant createdAt) {
 }

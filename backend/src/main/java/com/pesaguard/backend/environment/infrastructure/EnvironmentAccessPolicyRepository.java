@@ -1,6 +1,8 @@
 package com.pesaguard.backend.environment.infrastructure;
 
 import java.util.List;
+import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -12,9 +14,13 @@ public interface EnvironmentAccessPolicyRepository extends JpaRepository<Environ
 
     List<EnvironmentAccessPolicy> findByEnvironmentIdOrderBySubjectTypeAscSubjectRoleAsc(UUID environmentId);
 
-    List<EnvironmentAccessPolicy> findByEnvironmentIdAndSubjectTypeAndSubjectRole(
+    Optional<EnvironmentAccessPolicy> findByEnvironmentIdAndSubjectTypeAndSubjectRole(
             UUID environmentId, EnvironmentAccessSubjectType subjectType, String subjectRole);
 
     void deleteByEnvironmentIdAndSubjectTypeAndSubjectRole(
             UUID environmentId, EnvironmentAccessSubjectType subjectType, String subjectRole);
+
+    boolean existsByProjectId(UUID projectId);
+
+    boolean existsByProjectIdIn(Set<UUID> projectIds);
 }

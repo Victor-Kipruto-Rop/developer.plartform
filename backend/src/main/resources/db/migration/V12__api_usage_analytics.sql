@@ -105,6 +105,7 @@ create table usage_buckets (
 create index if not exists usage_buckets_lookup_idx
     on usage_buckets(granularity, organization_id, window_start desc);
 create index if not exists usage_buckets_endpoint_idx
+    on usage_buckets(organization_id, endpoint, window_start desc);
 
 -- Aggregates are recomputed from raw rather than incremented, so a failure part
 -- way through a rollup is recovered by re-running it. That only holds while the
@@ -123,4 +124,3 @@ drop trigger if exists api_request_events_append_only on api_request_events;
 create trigger api_request_events_append_only
     before update or delete on api_request_events
     for each row execute function prevent_api_request_events_mutation();
-    on usage_buckets(organization_id, endpoint, window_start desc);

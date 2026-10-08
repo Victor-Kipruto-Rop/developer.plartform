@@ -6,6 +6,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.nullable;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -29,6 +30,8 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 
 import com.pesaguard.backend.audit.application.AuditService;
 import com.pesaguard.backend.common.exception.BusinessException;
+import com.pesaguard.backend.common.exception.EmailVerificationRequiredException;
+import com.pesaguard.backend.common.exception.MfaEnrollmentRequiredException;
 import com.pesaguard.backend.common.exception.UnauthorizedException;
 import com.pesaguard.backend.config.ApplicationProperties;
 import com.pesaguard.backend.member.domain.UserAccount;
@@ -38,8 +41,14 @@ import com.pesaguard.backend.organization.domain.OrganizationMembership;
 import com.pesaguard.backend.organization.domain.OrganizationSecuritySettings;
 import com.pesaguard.backend.organization.infrastructure.OrganizationMembershipRepository;
 import com.pesaguard.backend.security.credentials.CredentialCryptoService;
+import com.pesaguard.backend.security.passkeys.PasskeyCredentialRepository;
+import com.pesaguard.backend.security.sessions.RefreshTokenService;
 import com.pesaguard.backend.security.sessions.SessionService;
+import com.pesaguard.backend.security.tokens.RevokedTokenRegistry;
 import com.pesaguard.backend.security.throttling.RequestThrottleService;
+import com.pesaguard.backend.securitycenter.application.UnfamiliarDeviceDetector;
+import com.pesaguard.backend.security.TestProperties;
+import com.pesaguard.backend.member.application.EmailVerificationService;
 
 class LoginServiceTest {
 
@@ -52,7 +61,12 @@ class LoginServiceTest {
     private final OrganizationSecuritySettingsService securitySettingsService =
             mock(OrganizationSecuritySettingsService.class);
     private final SessionService sessionService = mock(SessionService.class);
+    private final MfaService mfaService = mock(MfaService.class);
+    private final RefreshTokenService refreshTokenService = mock(RefreshTokenService.class);
     private final AuditService auditService = mock(AuditService.class);
+    private final UnfamiliarDeviceDetector unfamiliarDeviceDetector =
+            mock(UnfamiliarDeviceDetector.class);
+    private final EmailVerificationService emailVerificationService = mock(EmailVerificationService.class);
 
     private LoginService loginService;
 
@@ -61,31 +75,48 @@ class LoginServiceTest {
         SecretKeySpec credentialKey =
                 new SecretKeySpec("01234567890123456789012345678901".getBytes(StandardCharsets.UTF_8), "HmacSHA256");
         CredentialCryptoService cryptoService = new CredentialCryptoService(credentialKey, new SecureRandom());
-        ApplicationProperties properties = new ApplicationProperties(new ApplicationProperties.Security(
-                List.of(java.net.URI.create("https://developers.pesaguard.victorkipruto.com")),
-                Duration.ofHours(8),
-                "Y3JlZGVudGlhbC1rZXktMzItYnl0ZXMh",
-                "YXVkaXQta2V5LTMyLWJ5dGVzISEhISE=",
-                true,
-                4,
-                3,
-                10,
-                Duration.ofMinutes(15),
-                Duration.ofDays(7),
-                30,
-                Duration.ofMinutes(15)),
-                new ApplicationProperties.Platform(
-                        "b3BlcmF0b3Ita2V5LTMyLWJ5dGVzISEhISEh"));
+        ApplicationProperties properties = TestProperties.platform();
         when(passwordEncoder.encode(anyString())).thenReturn("encoded-placeholder");
         when(passwordEncoder.matches(anyString(), anyString())).thenReturn(true);
+        when(unfamiliarDeviceDetector.requiresEmailVerification(any(), nullable(String.class))).thenReturn(true);
+        when(emailVerificationService.issueLoginMfa(any(), any())).thenAnswer(invocation ->
+                new EmailLoginMfaChallenge(UUID.randomUUID(), NOW.plus(Duration.ofMinutes(10)),
+                        NOW.plusSeconds(60), "p***@example.com"));
+        when(sessionService.issue(any(), any(Duration.class), anyInt(), any(), any()))
+                .thenReturn(new SessionService.IssuedSession("token", UUID.randomUUID(), NOW.plusSeconds(600)));
         when(sessionService.issue(any(), any(Duration.class), anyInt()))
                 .thenReturn(new SessionService.IssuedSession("token", UUID.randomUUID(), NOW.plusSeconds(600)));
+        when(refreshTokenService.issue(any(), any(), any()))
+                .thenReturn(new RefreshTokenService.IssuedRefreshToken("refresh", NOW.plusSeconds(86400), UUID.randomUUID()));
         loginService = new LoginService(
                 membershipRepository, passwordEncoder, cryptoService, throttleService, securitySettingsService,
-                new PasswordPolicy(), sessionService, auditService, properties, credentialKey);
+                new PasswordPolicy(password -> false), sessionService, auditService, mfaService, refreshTokenService,
+                mock(RevokedTokenRegistry.class), unfamiliarDeviceDetector, properties, credentialKey,
+                emailVerificationService, mock(PasskeyCredentialRepository.class));
     }
 
+    /**
+     * A verified owner membership.
+     *
+     * <p>Sign-in refuses an unverified address with {@code EMAIL_NOT_VERIFIED}, so a
+     * fixture that leaves the account unverified would fail every test in this class
+     * for a reason unrelated to what each one is about. Tests that care about the
+     * gate itself use {@link #unverifiedMembership()}.
+     */
     private OrganizationMembership membership() {
+        UserAccount user = verifiedUser();
+        Organization organization = Organization.create("Acme", "acme-" + UUID.randomUUID(), user.getId(), NOW);
+        return OrganizationMembership.owner(organization, user);
+    }
+
+    private UserAccount verifiedUser() {
+        UserAccount user = UserAccount.create("person@example.com", "Person", "encoded-hash");
+        user.verifyEmail(NOW);
+        return user;
+    }
+
+    /** Same as {@link #membership()} but with an address that has never been confirmed. */
+    private OrganizationMembership unverifiedMembership() {
         UserAccount user = UserAccount.create("person@example.com", "Person", "encoded-hash");
         Organization organization = Organization.create("Acme", "acme-" + UUID.randomUUID(), user.getId(), NOW);
         return OrganizationMembership.owner(organization, user);
@@ -93,6 +124,17 @@ class LoginServiceTest {
 
     private void givenMemberships(List<OrganizationMembership> memberships) {
         when(membershipRepository.findAllActiveByEmail("person@example.com")).thenReturn(memberships);
+        memberships.stream()
+                .map(membership -> membership.getUser().getId())
+                .distinct()
+                .forEach(userId -> when(membershipRepository.findAllActiveByUserId(userId))
+                        .thenReturn(memberships.stream()
+                                .filter(membership -> membership.getUser().getId().equals(userId))
+                                .toList()));
+    }
+
+    private void givenUsernameMemberships(List<OrganizationMembership> memberships) {
+        when(membershipRepository.findAllActiveByUsername("person")).thenReturn(memberships);
     }
 
     private void givenSettings(OrganizationMembership membership, int sessionTtlMinutes, int maxSessions) {
@@ -105,29 +147,139 @@ class LoginServiceTest {
     }
 
     @Test
-    void singleOrganizationLoginIssuesSessionWithOrganizationPolicy() {
+    void anUnverifiedAddressCannotSignIn() {
+        givenMemberships(List.of(unverifiedMembership()));
+        Instant expiresAt = NOW.plus(Duration.ofMinutes(10));
+        Instant resendAvailableAt = NOW.plus(Duration.ofSeconds(60));
+        when(emailVerificationService.issueIfCooldownElapsed("person@example.com"))
+                .thenReturn(new EmailVerificationService.VerificationChallenge(
+                        NOW, expiresAt, resendAvailableAt));
+
+        assertThatThrownBy(() -> loginService.login(
+                new LoginRequest("person@example.com", PASSWORD, null), "203.0.113.10"))
+                .isInstanceOfSatisfying(EmailVerificationRequiredException.class, challenge -> {
+                    assertThat(challenge).hasMessageContaining("verification code");
+                    assertThat(challenge.verificationExpiresAt()).isEqualTo(expiresAt);
+                    assertThat(challenge.verificationResendAvailableAt()).isEqualTo(resendAvailableAt);
+                });
+
+        // The correct password must not unlock the account: the gate is about
+        // proven address ownership, not credentials.
+        verify(sessionService, never()).issue(any(), any(Duration.class), anyInt(), any(), any());
+        verify(emailVerificationService).issueIfCooldownElapsed("person@example.com");
+    }
+
+    @Test
+    void requiresEmailVerificationWhenTheDeviceOrActivityIsUntrusted() {
+        OrganizationMembership membership = membership();
+        givenMemberships(List.of(membership));
+        OrganizationSecuritySettings settings = OrganizationSecuritySettings.defaults(
+                membership.getOrganization().getId(), NOW);
+        when(securitySettingsService.getOrCreate(membership.getOrganization().getId())).thenReturn(settings);
+        assertThatThrownBy(() -> loginService.login(
+                new LoginRequest("person@example.com", PASSWORD, null), "203.0.113.10"))
+                .isInstanceOfSatisfying(LoginEmailMfaRequiredException.class,
+                        challenge -> assertThat(challenge.challengeId()).isNotNull());
+        verify(emailVerificationService).issueLoginMfa(
+                membership.getUser().getId(), membership.getOrganization().getId());
+        verify(sessionService, never()).issue(any(), any(Duration.class), anyInt(), any(), any());
+    }
+
+    @Test
+    void recentlyActiveRecognisedDeviceSignsInWithoutEmailVerification() {
+        OrganizationMembership membership = membership();
+        givenMemberships(List.of(membership));
+        givenSettings(membership, 30, 3);
+        when(unfamiliarDeviceDetector.requiresEmailVerification(
+                membership.getUser().getId(), "Chrome on Windows")).thenReturn(false);
+
+        AuthenticationResponse response = loginService.login(
+                new LoginRequest("person@example.com", PASSWORD, null),
+                "203.0.113.10", "Chrome on Windows");
+
+        assertThat(response).isNotNull();
+        verify(emailVerificationService, never()).issueLoginMfa(any(), any());
+        verify(sessionService).issue(membership, Duration.ofMinutes(30), 3,
+                "Chrome on Windows", "203.0.113.10");
+    }
+
+    @Test
+    void singleOrganizationLoginIssuesEmailChallengeForThatOrganization() {
         OrganizationMembership membership = membership();
         givenMemberships(List.of(membership));
         givenSettings(membership, 30, 3);
 
-        AuthenticationResponse response = loginService.login(
-                new LoginRequest("person@example.com", PASSWORD, null), "203.0.113.10");
-
-        assertThat(response.organization().id()).isEqualTo(membership.getOrganization().getId());
-        ArgumentCaptor<Duration> ttl = ArgumentCaptor.forClass(Duration.class);
-        verify(sessionService).issue(eq(membership), ttl.capture(), eq(3));
-        assertThat(ttl.getValue()).isEqualTo(Duration.ofMinutes(30));
+        assertThatThrownBy(() -> loginService.login(
+                new LoginRequest("person@example.com", PASSWORD, null), "203.0.113.10"))
+                .isInstanceOf(LoginEmailMfaRequiredException.class);
+        verify(emailVerificationService).issueLoginMfa(
+                membership.getUser().getId(), membership.getOrganization().getId());
+        verify(sessionService, never()).issue(any(), any(Duration.class), anyInt(), any(), any());
     }
 
     @Test
-    void multipleOrganizationsRequireExplicitSelection() {
-        givenMemberships(List.of(membership(), membership()));
+    void usernameCanBeUsedInsteadOfEmailToSignIn() {
+        OrganizationMembership membership = membership();
+        givenUsernameMemberships(List.of(membership));
+        givenSettings(membership, 30, 3);
+
+        assertThatThrownBy(() -> loginService.login(
+                new LoginRequest("Person", PASSWORD, null), "203.0.113.10"))
+                .isInstanceOf(LoginEmailMfaRequiredException.class);
+        verify(membershipRepository).findAllActiveByUsername("person");
+        verify(emailVerificationService).issueLoginMfa(
+                membership.getUser().getId(), membership.getOrganization().getId());
+    }
+
+    @Test
+    void loginAutomaticallyUsesTheLastAccessedWorkspace() {
+        UserAccount user = verifiedUser();
+        Organization firstOrganization = Organization.create("First", "first-" + UUID.randomUUID(),
+                user.getId(), NOW);
+        Organization lastOrganization = Organization.create("Last", "last-" + UUID.randomUUID(),
+                user.getId(), NOW);
+        OrganizationMembership first = OrganizationMembership.owner(firstOrganization, user);
+        OrganizationMembership last = OrganizationMembership.owner(lastOrganization, user);
+        user.recordWorkspaceAccess(lastOrganization.getId());
+        givenMemberships(List.of(first, last));
+        givenSettings(last, 480, 10);
 
         assertThatThrownBy(() -> loginService.login(
                 new LoginRequest("person@example.com", PASSWORD, null), "203.0.113.10"))
-                .isInstanceOf(BusinessException.class)
-                .hasMessageContaining("more than one organization");
-        verify(sessionService, never()).issue(any(), any(Duration.class), anyInt());
+                .isInstanceOf(LoginEmailMfaRequiredException.class);
+        assertThat(user.getLastAccessedWorkspaceId()).isEqualTo(lastOrganization.getId());
+        verify(emailVerificationService).issueLoginMfa(user.getId(), lastOrganization.getId());
+        verify(sessionService, never()).issue(any(), any(Duration.class), anyInt(), any(), any());
+    }
+
+    @Test
+    void loginUsesAnActiveWorkspaceWhenNoWorkspaceWasPreviouslyAccessed() {
+        UserAccount user = verifiedUser();
+        Organization firstOrganization = Organization.create("First", "first-" + UUID.randomUUID(),
+                user.getId(), NOW);
+        Organization secondOrganization = Organization.create("Second", "second-" + UUID.randomUUID(),
+                user.getId(), NOW);
+        OrganizationMembership first = OrganizationMembership.owner(firstOrganization, user);
+        OrganizationMembership second = OrganizationMembership.owner(secondOrganization, user);
+        givenMemberships(List.of(first, second));
+        givenSettings(first, 480, 10);
+
+        assertThatThrownBy(() -> loginService.login(
+                new LoginRequest("person@example.com", PASSWORD, null), "203.0.113.10"))
+                .isInstanceOf(LoginEmailMfaRequiredException.class);
+        verify(emailVerificationService).issueLoginMfa(user.getId(), firstOrganization.getId());
+        verify(sessionService, never()).issue(any(), any(Duration.class), anyInt(), any(), any());
+    }
+
+    @Test
+    void aSingleOrganizationLoginIssuesNoWorkspaceSelectionChallenge() {
+        OrganizationMembership only = membership();
+        givenMemberships(List.of(only));
+        givenSettings(only, 480, 10);
+
+        assertThatThrownBy(() -> loginService.login(
+                new LoginRequest("person@example.com", PASSWORD, null), "203.0.113.10"))
+                .isInstanceOf(LoginEmailMfaRequiredException.class);
     }
 
     @Test
@@ -137,11 +289,24 @@ class LoginServiceTest {
         givenMemberships(List.of(first, second));
         givenSettings(second, 480, 10);
 
-        AuthenticationResponse response = loginService.login(
-                new LoginRequest("person@example.com", PASSWORD, second.getOrganization().getId()), "203.0.113.10");
+        assertThatThrownBy(() -> loginService.login(
+                new LoginRequest("person@example.com", PASSWORD, second.getOrganization().getId()), "203.0.113.10"))
+                .isInstanceOf(LoginEmailMfaRequiredException.class);
+        verify(emailVerificationService).issueLoginMfa(
+                second.getUser().getId(), second.getOrganization().getId());
+    }
 
-        assertThat(response.organization().id()).isEqualTo(second.getOrganization().getId());
-        verify(sessionService).issue(eq(second), any(Duration.class), eq(10));
+    @Test
+    void recoveryFactorsCannotCompleteNormalLogin() {
+        OrganizationMembership membership = membership();
+        givenMemberships(List.of(membership));
+        givenSettings(membership, 480, 10);
+        assertThatThrownBy(() -> loginService.login(
+                new LoginRequest("person@example.com", PASSWORD, null), "203.0.113.10"))
+                .isInstanceOf(LoginEmailMfaRequiredException.class);
+        verify(mfaService, never()).verify(any(), anyString());
+        verify(emailVerificationService).issueLoginMfa(
+                membership.getUser().getId(), membership.getOrganization().getId());
     }
 
     @Test
@@ -202,15 +367,62 @@ class LoginServiceTest {
     }
 
     @Test
-    void loginIsAuditedAgainstTheAuthenticatedOrganization() {
+    void loginSurvivesADetectorThatThrowsAfterEmailVerification() {
         OrganizationMembership membership = membership();
         givenMemberships(List.of(membership));
         givenSettings(membership, 480, 10);
+        org.mockito.Mockito.doThrow(new IllegalStateException("signal store exploded"))
+                .when(unfamiliarDeviceDetector).evaluate(any(), any(), any());
+        UUID challengeId = UUID.randomUUID();
+        when(emailVerificationService.consumeLoginMfa(challengeId, "123456"))
+                .thenReturn(new EmailVerificationService.LoginMfaIdentity(
+                        membership.getUser().getId(), membership.getOrganization().getId()));
 
-        loginService.login(new LoginRequest("person@example.com", PASSWORD, null), "203.0.113.10");
+        assertThatThrownBy(() -> loginService.login(
+                new LoginRequest("person@example.com", PASSWORD, null), "203.0.113.10"))
+                .isInstanceOf(LoginEmailMfaRequiredException.class);
+        assertThat(loginService.completeEmailMfaLogin(
+                challengeId, "123456", "Safari on iOS", "203.0.113.10")).isNotNull();
+    }
 
+    @Test
+    void aVerifiedEmailLoginIsCheckedForAnUnfamiliarDevice() {
+        OrganizationMembership membership = membership();
+        givenMemberships(List.of(membership));
+        givenSettings(membership, 480, 10);
+        UUID challengeId = UUID.randomUUID();
+        when(emailVerificationService.consumeLoginMfa(challengeId, "123456"))
+                .thenReturn(new EmailVerificationService.LoginMfaIdentity(
+                        membership.getUser().getId(), membership.getOrganization().getId()));
+        assertThatThrownBy(() -> loginService.login(
+                new LoginRequest("person@example.com", PASSWORD, null), "203.0.113.10", "Safari on iOS"))
+                .isInstanceOf(LoginEmailMfaRequiredException.class);
+        loginService.completeEmailMfaLogin(challengeId, "123456", "Safari on iOS", "203.0.113.10");
+
+        verify(unfamiliarDeviceDetector).evaluate(any(), eq("Safari on iOS"), any());
+    }
+
+    @Test
+    void verifiedLoginIsAuditedAgainstTheAuthenticatedOrganization() {
+        OrganizationMembership membership = membership();
+        givenMemberships(List.of(membership));
+        givenSettings(membership, 480, 10);
+        UUID challengeId = UUID.randomUUID();
+        when(emailVerificationService.consumeLoginMfa(challengeId, "123456"))
+                .thenReturn(new EmailVerificationService.LoginMfaIdentity(
+                        membership.getUser().getId(), membership.getOrganization().getId()));
+        assertThatThrownBy(() -> loginService.login(
+                new LoginRequest("person@example.com", PASSWORD, null), "203.0.113.10"))
+                .isInstanceOf(LoginEmailMfaRequiredException.class);
+        loginService.completeEmailMfaLogin(challengeId, "123456", null, "203.0.113.10");
+
+        // Login now also records when the refresh token expires, so the metadata is no
+        // longer empty. Asserted rather than loosened to anyMap(): the expiry is
+        // what an incident reviewer needs to tell a short-lived session from a
+        // long-lived credential, so dropping the check would lose real coverage.
         verify(auditService).append(
                 eq(membership.getOrganization().getId()), eq(membership.getUser().getId()),
-                eq("auth.login.succeeded"), eq("session"), anyString(), any(), eq(Map.of()));
+                eq("auth.login.succeeded"), eq("session"), anyString(), any(),
+                eq(Map.of("refreshTokenExpiresAt", NOW.plusSeconds(86400).toString())));
     }
 }

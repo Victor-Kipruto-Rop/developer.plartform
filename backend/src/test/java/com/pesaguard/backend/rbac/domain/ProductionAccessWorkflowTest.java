@@ -34,7 +34,11 @@ class ProductionAccessWorkflowTest {
 
     private ProductionAccessRequest request() {
         return ProductionAccessRequest.create(org, project, environment, requester,
-                "Going live with the mobile checkout integration", NOW);
+                "Going live with the mobile checkout integration", "Mobile checkout",
+                "Example merchant and support contact details", "Accept checkout payments and refunds",
+                "payments:write, refunds:read", "Up to 1000 requests per minute",
+                "Backend service deployed in two regions", "Secrets managed in vault; monitored access",
+                NOW);
     }
 
     private ProductionAccessRequest approved() {
@@ -222,7 +226,9 @@ class ProductionAccessWorkflowTest {
     @Test
     void aReasonlessRequestIsRefusedAtCreation() {
         assertThatThrownBy(() -> ProductionAccessRequest.create(org, project, environment,
-                requester, "   ", NOW))
+                requester, "   ", "Mobile checkout", "Example merchant details",
+                "Accept checkout payments", "payments:write", "1000 per minute",
+                "Backend service architecture", "Secrets stored securely", NOW))
                 .isInstanceOf(IllegalArgumentException.class);
     }
 

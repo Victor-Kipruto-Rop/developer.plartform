@@ -16,5 +16,8 @@ public interface AuditEventRepository extends JpaRepository<AuditEvent, UUID> {
 
     Page<AuditEvent> findByOrganizationIdOrderBySequenceNumberDesc(UUID organizationId, Pageable pageable);
 
+    Page<AuditEvent> findByOrganizationIdAndProjectIdOrderBySequenceNumberDesc(
+            UUID organizationId, UUID projectId, Pageable pageable);
+
     List<AuditEvent> findByOrganizationIdOrderBySequenceNumberAsc(UUID organizationId);
 }

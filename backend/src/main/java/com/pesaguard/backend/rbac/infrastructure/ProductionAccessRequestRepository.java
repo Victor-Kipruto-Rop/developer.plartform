@@ -5,6 +5,7 @@ import java.util.Optional;
 import java.util.UUID;
 
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.domain.Pageable;
 
 import com.pesaguard.backend.rbac.domain.ProductionAccessRequest;
 import com.pesaguard.backend.rbac.domain.ProductionAccessStatus;
@@ -19,5 +20,12 @@ public interface ProductionAccessRequestRepository
 
     Optional<ProductionAccessRequest> findByIdAndOrganizationId(UUID id, UUID organizationId);
 
+    boolean existsByOrganizationIdAndProjectIdAndEnvironmentIdAndStatusAndExpiresAtAfter(
+            UUID organizationId, UUID projectId, UUID environmentId,
+            ProductionAccessStatus status, java.time.Instant now);
+
     long countByOrganizationIdAndStatus(UUID organizationId, ProductionAccessStatus status);
+
+    List<ProductionAccessRequest> findByStatusInAndExpiresAtLessThanEqualOrderByExpiresAtAsc(
+            List<ProductionAccessStatus> statuses, java.time.Instant now, Pageable pageable);
 }

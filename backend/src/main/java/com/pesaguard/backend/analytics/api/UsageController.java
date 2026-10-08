@@ -4,6 +4,7 @@ import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 
+import org.springframework.data.domain.Page;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -13,6 +14,8 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.pesaguard.backend.analytics.application.UsageQueryService;
 import com.pesaguard.backend.analytics.application.UsageQueryService.UsageSeries;
+import com.pesaguard.backend.analytics.application.RequestObservabilityService;
+import com.pesaguard.backend.analytics.application.RequestObservabilityService.RequestLog;
 import com.pesaguard.backend.analytics.domain.UsageGranularity;
 import com.pesaguard.backend.common.api.ApiResponse;
 import com.pesaguard.backend.security.principals.AuthenticatedUser;
@@ -33,9 +36,12 @@ import com.pesaguard.backend.security.principals.AuthenticatedUser;
 public class UsageController {
 
     private final UsageQueryService queryService;
+    private final RequestObservabilityService observabilityService;
 
-    public UsageController(UsageQueryService queryService) {
+    public UsageController(UsageQueryService queryService,
+            RequestObservabilityService observabilityService) {
         this.queryService = queryService;
+        this.observabilityService = observabilityService;
     }
 
     /**
@@ -52,9 +58,10 @@ public class UsageController {
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) Instant to,
             @RequestParam(required = false) UsageGranularity granularity,
             @RequestParam(required = false) UUID projectId,
-            @RequestParam(required = false) UUID environmentId) {
+            @RequestParam(required = false) UUID environmentId,
+            @RequestParam(required = false) UUID apiKeyId) {
         return ApiResponse.of(queryService.series(principal, from, to, granularity,
-                projectId, environmentId));
+                projectId, environmentId, apiKeyId));
     }
 
     /** Which endpoints this organization called, for a usage breakdown. */
@@ -63,7 +70,40 @@ public class UsageController {
             @AuthenticationPrincipal AuthenticatedUser principal,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) Instant from,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) Instant to,
-            @RequestParam(defaultValue = "HOUR") UsageGranularity granularity) {
-        return ApiResponse.of(queryService.endpoints(principal, from, to, granularity));
+            @RequestParam(defaultValue = "HOUR") UsageGranularity granularity,
+            @RequestParam(required = false) UUID projectId,
+            @RequestParam(required = false) UUID environmentId,
+            @RequestParam(required = false) UUID apiKeyId) {
+        return ApiResponse.of(queryService.endpoints(principal, from, to, granularity,
+                projectId, environmentId, apiKeyId));
+    }
+
+    /** Search real request telemetry. Bodies, credentials, and headers are not retained or exposed. */
+    @GetMapping("/requests")
+    ApiResponse<Page<RequestLog>> requests(
+            @AuthenticationPrincipal AuthenticatedUser principal,
+            @RequestParam(required = false) UUID projectId,
+            @RequestParam(required = false) UUID environmentId,
+            @RequestParam(required = false) Integer statusCode,
+            @RequestParam(required = false) String method,
+            @RequestParam(required = false) String requestId,
+            @RequestParam(required = false) UUID apiKeyId,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) Instant from,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) Instant to,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "50") int size) {
+        return ApiResponse.of(observabilityService.search(principal, projectId,
+                environmentId, statusCode, method, requestId, apiKeyId, from, to, page, size));
+    }
+
+    /** A request-level correlation view, not a distributed span trace. */
+    @GetMapping("/requests/{requestId}")
+    ApiResponse<RequestLog> request(
+            @AuthenticationPrincipal AuthenticatedUser principal,
+            @org.springframework.web.bind.annotation.PathVariable String requestId,
+            @RequestParam(required = false) UUID projectId,
+            @RequestParam(required = false) UUID environmentId,
+            @RequestParam(required = false) UUID apiKeyId) {
+        return ApiResponse.of(observabilityService.find(principal, requestId, projectId, environmentId, apiKeyId));
     }
 }

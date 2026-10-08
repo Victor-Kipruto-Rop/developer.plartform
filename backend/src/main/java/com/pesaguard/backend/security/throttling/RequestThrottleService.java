@@ -55,6 +55,18 @@ public class RequestThrottleService {
         }
     }
 
+    @Transactional(propagation = Propagation.REQUIRES_NEW, readOnly = true)
+    public Instant blockedUntil(String type, String subjectHash) {
+        Instant blockedUntil = jdbcTemplate.query(
+                "select blocked_until from login_throttles where subject_type = ? and subject_hash = ?",
+                resultSet -> resultSet.next()
+                        ? toInstant(resultSet.getTimestamp("blocked_until"))
+                        : null,
+                type,
+                subjectHash);
+        return blockedUntil != null && blockedUntil.isAfter(clock.instant()) ? blockedUntil : null;
+    }
+
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void recordFailure(String type, String subjectHash, int failureLimit) {
         upsert(type, subjectHash, failureLimit, failureWindow);

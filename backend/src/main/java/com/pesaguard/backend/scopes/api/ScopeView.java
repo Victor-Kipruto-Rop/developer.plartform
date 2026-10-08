@@ -20,6 +20,7 @@ public record ScopeView(
         String action,
         int version,
         boolean restricted,
+        boolean apiKeyAssignable,
         boolean deprecated,
         String replacedBy,
         String changeReason,
@@ -29,7 +30,8 @@ public record ScopeView(
     public static ScopeView from(ApiScopeDefinition definition, ApiScopeRestriction restriction) {
         return new ScopeView(definition.getName(), definition.getDescription(), definition.getCategory(),
                 definition.getResource(), definition.getAction(), definition.getVersion(),
-                definition.isRestricted(), definition.isDeprecated(), definition.getReplacedBy(),
+                definition.isRestricted(), definition.isApiKeyAssignable(),
+                definition.isDeprecated(), definition.getReplacedBy(),
                 definition.getChangeReason(),
                 restriction == null ? null : restriction.getReason(),
                 restriction != null && restriction.isRequiresSecurityReview());

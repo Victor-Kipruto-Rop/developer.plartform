@@ -44,6 +44,15 @@ create table api_scopes (
     updated_at timestamptz not null default now(),
     constraint api_scopes_version_positive check (version > 0),
     constraint api_scopes_name_format
+        check (name ~ '^[a-z][a-z0-9-]{1,47}:[a-z][a-z0-9-]{1,23}$'),
+    constraint api_scopes_resource_action_consistent
+        check (name = resource || ':' || action),
+    constraint api_scopes_replacement_is_known
+        check (replaced_by is null or replaced_by <> name),
+    constraint api_scopes_replacement_only_when_deprecated
+        check (deprecated or replaced_by is null)
+);
+
 create index if not exists api_scopes_category_idx on api_scopes(category);
 create index if not exists api_scopes_deprecated_idx on api_scopes(deprecated);
 
@@ -147,11 +156,3 @@ values
     ('webhooks:write', 'Can redirect PesaGuard event delivery to attacker-chosen endpoints.', true),
     ('developer:write', 'Can create credentials and environments, which can escalate access.', true)
 on conflict (scope_name) do nothing;
-        check (name ~ '^[a-z][a-z0-9-]{1,47}:[a-z][a-z0-9-]{1,23}$'),
-    constraint api_scopes_resource_action_consistent
-        check (name = resource || ':' || action),
-    constraint api_scopes_replacement_is_known
-        check (replaced_by is null or replaced_by <> name),
-    constraint api_scopes_replacement_only_when_deprecated
-        check (deprecated or replaced_by is null)
-);

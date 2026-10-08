@@ -63,7 +63,7 @@ create table if not exists organization_invitations (
     organization_id uuid not null references organizations(id),
     email varchar(320) not null,
     role varchar(24) not null,
-    token_hash char(64) not null unique,
+    token_hash varchar(64) not null unique,
     status varchar(24) not null,
     expires_at timestamptz not null,
     invited_by uuid not null references users(id),

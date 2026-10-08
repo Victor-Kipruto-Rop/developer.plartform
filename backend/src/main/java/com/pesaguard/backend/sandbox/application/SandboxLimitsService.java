@@ -7,6 +7,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.pesaguard.backend.rbac.application.AuthorizationService;
 import com.pesaguard.backend.rbac.domain.Permission;
+import com.pesaguard.backend.environment.domain.EnvironmentPermission;
 import com.pesaguard.backend.sandbox.api.UpdateSandboxLimitsRequest;
 import com.pesaguard.backend.sandbox.domain.SandboxLimits;
 import com.pesaguard.backend.security.principals.AuthenticatedUser;
@@ -40,6 +41,7 @@ public class SandboxLimitsService {
         authorizationService.requirePermission(principal, Permission.SANDBOX_UPDATE);
         // Resolved for its tenant check.
         sandboxService.get(principal, sandboxId);
+        sandboxService.requireEnvironmentAccess(principal, sandboxId, EnvironmentPermission.WRITE);
         SandboxLimits limits = sandboxService.limits(principal, sandboxId);
         limits.update(request.requestsPerMinute(), request.burstRequests(), request.maxApiKeys(),
                 request.maxCredentials(), request.maxWebhookEndpoints(),

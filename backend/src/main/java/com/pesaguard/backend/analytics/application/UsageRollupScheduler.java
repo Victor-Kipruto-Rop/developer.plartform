@@ -8,6 +8,8 @@ import org.slf4j.LoggerFactory;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
+import com.pesaguard.backend.common.api.SafeExceptionDiagnostics;
+
 /**
  * Drives the rollup ladder on a schedule.
  *
@@ -79,7 +81,9 @@ public class UsageRollupScheduler {
                         granularity, buckets, clock.instant());
             }
         } catch (RuntimeException failure) {
-            log.error("usage rollup failed granularity={}", granularity, failure);
+            log.error("usage rollup failed granularity={} type={} diagnostic={}",
+                    granularity, failure.getClass().getName(),
+                    SafeExceptionDiagnostics.stackTrace(failure));
         }
     }
 }

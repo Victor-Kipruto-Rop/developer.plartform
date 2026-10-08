@@ -1,6 +1,7 @@
 package com.pesaguard.backend.ratelimit.application;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.time.Duration;
 import java.time.Instant;
@@ -184,9 +185,7 @@ class RateLimitServiceTest {
     }
 
     @Test
-    void aFailingStoreFailsOpen() {
-        // Removing protection is the lesser evil to taking the API down, and it
-        // must be a deliberate choice rather than an accident.
+    void aFailingStoreFailsClosed() {
         RateLimitCounterStore broken = new InMemoryRateLimitCounterStore() {
             @Override
             public boolean isAvailable() {
@@ -196,7 +195,8 @@ class RateLimitServiceTest {
         RateLimitService service = new RateLimitService(broken);
         RateLimitPolicy policy = policy(RateLimitScope.API_KEY, 1, Duration.ofMinutes(1), null);
 
-        assertThat(service.check(request(), List.of(policy)).allowed()).isTrue();
+        assertThatThrownBy(() -> service.check(request(), List.of(policy)))
+                .isInstanceOf(RateLimitUnavailableException.class);
     }
 
     @Test

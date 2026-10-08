@@ -3,6 +3,10 @@ package com.pesaguard.backend.audit.api;
 import java.util.List;
 
 import org.springframework.data.domain.Page;
+import org.springframework.http.CacheControl;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -33,6 +37,17 @@ public class AuditEventController {
         Page<AuditEvent> result = auditQueryService.list(principal, page, size);
         List<AuditEventView> items = result.getContent().stream().map(this::toView).toList();
         return ApiResponse.of(PageResponse.of(items, result.getNumber(), result.getSize(), result.getTotalElements()));
+    }
+
+    @GetMapping(value = "/export", produces = "text/csv")
+    ResponseEntity<String> export(@AuthenticationPrincipal AuthenticatedUser principal,
+            @RequestParam(defaultValue = "1000") int limit) {
+        String csv = auditQueryService.exportCsv(principal, limit);
+        return ResponseEntity.ok()
+                .cacheControl(CacheControl.noStore())
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"pesaguard-audit.csv\"")
+                .contentType(new MediaType("text", "csv", java.nio.charset.StandardCharsets.UTF_8))
+                .body(csv);
     }
 
     @GetMapping("/verify")

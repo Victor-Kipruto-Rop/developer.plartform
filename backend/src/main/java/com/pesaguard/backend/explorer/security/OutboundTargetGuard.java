@@ -42,9 +42,9 @@ import java.util.Set;
  *       ranges are refused, not just RFC1918.</li>
  * </ul>
  *
- * <p>This class does <em>not</em> pin the connection to the validated address.
- * Between this check and the socket opening, DNS can be re-resolved (rebinding).
- * See {@code docs/explorer.md} for why that window is accepted and what closes it.
+ * <p>Callers that make outbound requests must connect only to the addresses in
+ * the returned {@link ValidatedTarget}; resolving the hostname again after this
+ * check creates a DNS-rebinding vulnerability.
  */
 public final class OutboundTargetGuard {
 

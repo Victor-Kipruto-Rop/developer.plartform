@@ -15,6 +15,10 @@ spring:
   main:
     banner-mode: "off"
 
+pesaguard:
+  api-key:
+    allow-local-sandbox-host: ${PESAGUARD_API_KEY_ALLOW_LOCAL_HOST:false}
+
 server:
   error:
     # No stack traces or messages to clients, in any environment.
@@ -51,6 +55,9 @@ logging:
       total-size-cap: 5GB
 
 management:
+  server:
+    port: 9090
+    address: 0.0.0.0
   endpoints:
     web:
       exposure:
@@ -59,10 +66,13 @@ management:
     health:
       probes:
         enabled: true
+      group:
+        readiness:
+          include: readinessState,db,redis
       show-details: never
-      # A failing dependency must be visible in readiness, but details must not
-      # leak dependency names or connection strings to an unauthenticated caller.
-      show-components: never
+      # This port is restricted to cluster probes and Prometheus. Component names
+      # let deployment checks confirm Redis and PostgreSQL without exposing details.
+      show-components: always
   health:
     livenessstate:
       enabled: true

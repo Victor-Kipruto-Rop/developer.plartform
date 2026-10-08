@@ -27,6 +27,8 @@ import com.pesaguard.backend.rbac.domain.ProductionAccessStatus;
 import com.pesaguard.backend.rbac.infrastructure.ProductionAccessHistoryRepository;
 import com.pesaguard.backend.rbac.infrastructure.ProductionAccessRequestRepository;
 import com.pesaguard.backend.security.principals.AuthenticatedUser;
+import com.pesaguard.backend.notifications.application.ProductionAccessNotificationEmitter;
+import com.pesaguard.backend.events.application.DeveloperEventEmitter;
 
 /**
  * Production access is request/review, never self-service. Requesting requires
@@ -45,6 +47,8 @@ public class ProductionAccessService {
     private final AuthorizationService authorizationService;
     private final AuditService auditService;
     private final Clock clock;
+    private final ProductionAccessNotificationEmitter notifications;
+    private final DeveloperEventEmitter eventEmitter;
 
     public ProductionAccessService(
             ProductionAccessRequestRepository repository,
@@ -52,13 +56,17 @@ public class ProductionAccessService {
             ProjectEnvironmentRepository environmentRepository,
             AuthorizationService authorizationService,
             AuditService auditService,
-            Clock clock) {
+            Clock clock,
+            ProductionAccessNotificationEmitter notifications,
+            DeveloperEventEmitter eventEmitter) {
         this.repository = repository;
         this.historyRepository = historyRepository;
         this.environmentRepository = environmentRepository;
         this.authorizationService = authorizationService;
         this.auditService = auditService;
         this.clock = clock;
+        this.notifications = notifications;
+        this.eventEmitter = eventEmitter;
     }
 
     @Transactional
@@ -74,9 +82,14 @@ public class ProductionAccessService {
         }
         ProductionAccessRequest created = repository.saveAndFlush(ProductionAccessRequest.create(
                 principal.organizationId(), projectId, request.environmentId(),
-                principal.userId(), request.reason(), clock.instant()));
+                principal.userId(), request.reason(), request.applicationName(),
+                request.organizationDetails(), request.intendedApiUsage(), request.requestedScopes(),
+                request.requestedLimits(), request.integrationInformation(),
+                request.securityInformation(), clock.instant()));
         audit(principal, "production_access.requested", created.getId(),
                 Map.of("projectId", projectId.toString(), "environmentId", request.environmentId().toString()));
+        eventEmitter.productionAccessChanged(created, "requested");
+        notifications.requestSubmitted(created);
         return toView(created);
     }
 
@@ -105,6 +118,8 @@ public class ProductionAccessService {
         recordHistory(principal, request, from, review.note());
         audit(principal, "production_access.approved", request.getId(),
                 Map.of("expiresAt", String.valueOf(request.getExpiresAt())));
+        eventEmitter.productionAccessChanged(request, "approved");
+        notifications.approved(request);
         return toView(request);
     }
 
@@ -119,6 +134,8 @@ public class ProductionAccessService {
         repository.saveAndFlush(request);
         recordHistory(principal, request, from, review.note());
         audit(principal, "production_access.rejected", request.getId(), Map.of());
+        eventEmitter.productionAccessChanged(request, "rejected");
+        notifications.rejected(request);
         return toView(request);
     }
 
@@ -131,6 +148,7 @@ public class ProductionAccessService {
         repository.saveAndFlush(request);
         recordHistory(principal, request, from, "cancelled by requester");
         audit(principal, "production_access.cancelled", request.getId(), Map.of());
+        eventEmitter.productionAccessChanged(request, "cancelled");
         return toView(request);
     }
 
@@ -173,6 +191,9 @@ public class ProductionAccessService {
     private ProductionAccessRequestView toView(ProductionAccessRequest request) {
         return new ProductionAccessRequestView(request.getId(), request.getProjectId(),
                 request.getEnvironmentId(), request.getRequestedBy(), request.getStatus().name(),
+                request.getReason(), request.getApplicationName(), request.getOrganizationDetails(),
+                request.getIntendedApiUsage(), request.getRequestedScopes(), request.getRequestedLimits(),
+                request.getIntegrationInformation(), request.getSecurityInformation(),
                 request.isActiveGrant(clock.instant()),
                 request.getReviewedBy(), request.getReviewedAt(), request.getExpiresAt(),
                 request.getActivatedBy(), request.getActivatedAt(),
@@ -195,6 +216,8 @@ public class ProductionAccessService {
         repository.saveAndFlush(request);
         recordHistory(principal, request, from, null);
         audit(principal, "production_access.under_review", request.getId(), Map.of());
+        eventEmitter.productionAccessChanged(request, "reviewed");
+        notifications.reviewStarted(request);
         return toView(request);
     }
 
@@ -214,6 +237,8 @@ public class ProductionAccessService {
         repository.saveAndFlush(request);
         recordHistory(principal, request, from, "provisioned and activated");
         audit(principal, "production_access.activated", request.getId(), Map.of());
+        eventEmitter.productionAccessChanged(request, "activated");
+        notifications.activated(request);
         return toView(request);
     }
 
@@ -233,6 +258,8 @@ public class ProductionAccessService {
         recordHistory(principal, request, from, reason);
         audit(principal, "production_access.suspended", request.getId(),
                 Map.of("reason", reason));
+        eventEmitter.productionAccessChanged(request, "suspended");
+        notifications.suspended(request);
         return toView(request);
     }
 
@@ -246,6 +273,8 @@ public class ProductionAccessService {
         repository.saveAndFlush(request);
         recordHistory(principal, request, from, "reactivated after suspension");
         audit(principal, "production_access.reactivated", request.getId(), Map.of());
+        eventEmitter.productionAccessChanged(request, "reactivated");
+        notifications.reactivated(request);
         return toView(request);
     }
 
@@ -269,6 +298,8 @@ public class ProductionAccessService {
         repository.saveAndFlush(request);
         recordHistory(principal, request, from, reason);
         audit(principal, "production_access.revoked", request.getId(), Map.of("reason", reason));
+        eventEmitter.productionAccessChanged(request, "revoked");
+        notifications.revoked(request);
         return toView(request);
     }
 

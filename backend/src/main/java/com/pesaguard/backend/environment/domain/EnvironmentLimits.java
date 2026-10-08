@@ -15,11 +15,11 @@ import jakarta.persistence.Version;
 /**
  * Per-environment quotas and request limits.
  *
- * <p>{@code requestsPerMinute} and {@code burstRequests} are enforced at the
- * ingress/gateway; the platform stores and exposes them but does not yet meter
- * traffic. {@code maxApiKeys}, {@code maxCredentials} and the credential
- * rotation interval <em>are</em> enforced in-process. See
- * {@code docs/environment-limits.md} for which limit is enforced where.
+ * <p>{@code requestsPerMinute} and {@code burstRequests} are enforced for
+ * API-key-authenticated developer requests by the shared rate-limit store.
+ * {@code maxApiKeys} and {@code maxCredentials} are enforced during issuance;
+ * the credential rotation interval is surfaced as a frontend reminder. See
+ * {@code docs/environment-limits.md} for the exact scope of each limit.
  */
 @Entity
 @Table(name = "environment_limits")

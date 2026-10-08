@@ -96,8 +96,12 @@ class UsageEventRecorderTest {
         CountDownLatch seen = new CountDownLatch(2);
         List<String> ids = new CopyOnWriteArrayList<>();
         try (UsageEventRecorder recorder = new UsageEventRecorder(100, event -> {
-            seen.countDown();
+            // Record first, then signal. The other order counts the latch down
+            // while the write is still in flight, so the assertion below can run
+            // against a list that is one element short -- which is how this test
+            // failed intermittently under full-suite load and passed in isolation.
             ids.add(event.getRequestId());
+            seen.countDown();
             throw new IllegalStateException("database unavailable");
         })) {
             recorder.record(event("r1"));

@@ -20,21 +20,17 @@ import com.pesaguard.backend.notifications.domain.NotificationCategory;
 import com.pesaguard.backend.notifications.domain.NotificationChannel;
 import com.pesaguard.backend.notifications.domain.NotificationPreferences;
 import com.pesaguard.backend.notifications.domain.NotificationRetryPolicy;
+import com.pesaguard.backend.notifications.domain.NotificationSeverity;
 import com.pesaguard.backend.notifications.domain.NotificationType;
 import com.pesaguard.backend.notifications.infrastructure.NotificationPreferenceEntity;
 import com.pesaguard.backend.notifications.infrastructure.NotificationPreferenceRepository;
+import com.pesaguard.backend.notifications.infrastructure.NotificationQueueEventEntity;
+import com.pesaguard.backend.notifications.infrastructure.NotificationQueueEventRepository;
 import com.pesaguard.backend.notifications.infrastructure.NotificationRepository;
+import com.pesaguard.backend.member.infrastructure.UserAccountRepository;
 
 /**
- * Raises and delivers notifications.
- *
- * <p>Delivery is attempted inline rather than on a queue thread, because a
- * notification is a side effect of something the user is already waiting on, and
- * most sends either succeed or fail immediately. Retries are the part that is
- * genuinely deferred.
- *
- * <p>Every attempt is recorded on the notification, so "was I told?" is always
- * answerable and a failure is never invisible.
+ * Enqueues notification events transactionally and delivers them asynchronously.
  */
 @Service
 public class NotificationService {
@@ -42,17 +38,24 @@ public class NotificationService {
     private static final Logger log = LoggerFactory.getLogger(NotificationService.class);
 
     private final NotificationRepository notificationRepository;
+    private final NotificationQueueEventRepository queueRepository;
     private final NotificationPreferenceRepository preferencesRepository;
+    private final NotificationRuleEngine ruleEngine;
     private final Map<NotificationChannel, NotificationTransport> transports;
     private final NotificationRetryPolicy retryPolicy;
     private final Clock clock;
+    private final UserAccountRepository userRepository;
     private final Random random = new Random();
 
     public NotificationService(NotificationRepository notificationRepository,
+            NotificationQueueEventRepository queueRepository,
             NotificationPreferenceRepository preferencesRepository,
-            List<NotificationTransport> transports, Clock clock) {
+            NotificationRuleEngine ruleEngine, List<NotificationTransport> transports, Clock clock,
+            UserAccountRepository userRepository) {
         this.notificationRepository = notificationRepository;
+        this.queueRepository = queueRepository;
         this.preferencesRepository = preferencesRepository;
+        this.ruleEngine = ruleEngine;
         EnumMap<NotificationChannel, NotificationTransport> byChannel =
                 new EnumMap<>(NotificationChannel.class);
         for (NotificationTransport transport : transports) {
@@ -61,25 +64,74 @@ public class NotificationService {
         this.transports = Map.copyOf(byChannel);
         this.retryPolicy = NotificationRetryPolicy.defaults();
         this.clock = clock;
+        this.userRepository = userRepository;
     }
 
     /**
-     * Raises a notification and attempts immediate delivery.
+     * Enqueues a notification without waiting for an external delivery provider.
      *
-     * @param recipientAddress the email address, only ever passed to a transport
-     * @return the notification with its delivery state recorded
+     * @return the durable notification event id
      */
     @Transactional
-    public Notification notify(UUID organizationId, UUID userId, NotificationType type,
-            String subject, String body, String recipientAddress) {
-        NotificationPreferences preferences = preferencesFor(userId);
+    public UUID notify(UUID organizationId, UUID userId, NotificationType type,
+            String subject, String body) {
+        return enqueue(organizationId, userId, type, subject, body, null, null, null, null);
+    }
 
-        Notification notification = Notification.addressedTo(organizationId, userId, type,
-                subject, body, preferences, NotificationChannel.values());
+    @Transactional
+    public UUID enqueue(UUID organizationId, UUID userId, NotificationType type, String subject,
+            String body, String resourceType, String resourceId, String actionUrl,
+            String deduplicationKey) {
+        UUID eventId = UUID.randomUUID();
+        int inserted = queueRepository.insertIfAbsent(eventId, organizationId, userId,
+                type.name(), ruleEngine.severityFor(type).name(), subject, body, resourceType,
+                resourceId, actionUrl, deduplicationKey, clock.instant());
+        if (inserted == 1) return eventId;
+        if (deduplicationKey != null) {
+            return queueRepository.findByOrganizationIdAndUserIdAndTypeAndDeduplicationKey(
+                    organizationId, userId, type, deduplicationKey)
+                    .map(NotificationQueueEventEntity::getId)
+                    .orElseThrow(() -> new IllegalStateException(
+                            "A duplicate notification event could not be retrieved."));
+        }
+        throw new IllegalStateException("A notification event could not be queued.");
+    }
+
+    /** Processes one queued event in a separate worker transaction. */
+    @Transactional
+    public boolean processQueuedEvent(UUID eventId) {
+        NotificationQueueEventEntity event = queueRepository.findByIdForUpdate(eventId).orElse(null);
+        if (event == null || event.getState() != NotificationQueueEventEntity.State.PENDING) {
+            return false;
+        }
+        NotificationPreferences preferences = preferencesFor(event.getUserId());
+        var channels = ruleEngine.channelsFor(event.getType(),
+                preferences.channelsFor(event.getType()), availableChannels());
+        Notification notification = Notification.addressedTo(event.getOrganizationId(),
+                event.getUserId(), event.getType(), event.getSubject(), event.getBody(),
+                preferences, channels.toArray(NotificationChannel[]::new));
         notification = notification.withAttempt(notification.id(), clock.instant(),
                 notification.deliveries());
+        String recipientAddress = userRepository.findById(event.getUserId())
+                .map(com.pesaguard.backend.member.domain.UserAccount::getEmail)
+                .orElse(null);
+        Notification delivered = deliver(notification, recipientAddress);
+        notificationRepository.saveAndFlush(new com.pesaguard.backend.notifications.infrastructure
+                .NotificationEntity(delivered, event.getId(), event.getSeverity(),
+                        event.getResourceType(), event.getResourceId(), event.getActionUrl()));
+        event.markProcessed(clock.instant());
+        queueRepository.save(event);
+        return true;
+    }
 
-        return deliver(notification, recipientAddress);
+    @Transactional
+    public void recordQueueFailure(UUID eventId, String error) {
+        NotificationQueueEventEntity event = queueRepository.findByIdForUpdate(eventId).orElse(null);
+        if (event == null || event.getState() != NotificationQueueEventEntity.State.PENDING) return;
+        int nextAttempt = event.getAttempts() + 1;
+        long delaySeconds = Math.min(300, 5L << Math.min(nextAttempt, 6));
+        event.recordFailure(error, clock.instant().plusSeconds(delaySeconds), 8);
+        queueRepository.save(event);
     }
 
     /**
@@ -101,6 +153,36 @@ public class NotificationService {
             current = attempt(current, channel, recipientAddress);
         }
         return current;
+    }
+
+    /** Retries only channels whose persisted retry time has elapsed. */
+    @Transactional
+    public boolean retryDueChannels(UUID notificationId) {
+        var stored = notificationRepository.findByIdForUpdate(notificationId).orElse(null);
+        if (stored == null) return false;
+        Notification notification = stored.toDomain();
+        Instant now = clock.instant();
+        boolean due = notification.deliveries().values().stream().anyMatch(delivery ->
+                delivery.state() == DeliveryState.RETRY_SCHEDULED
+                        && delivery.nextAttemptAt() != null
+                        && !delivery.nextAttemptAt().isAfter(now));
+        if (!due) return false;
+
+        String recipientAddress = userRepository.findById(notification.userId())
+                .map(com.pesaguard.backend.member.domain.UserAccount::getEmail)
+                .orElse(null);
+        Notification current = notification;
+        for (Map.Entry<NotificationChannel, Notification.ChannelDelivery> entry
+                : notification.deliveries().entrySet()) {
+            var delivery = entry.getValue();
+            if (delivery.state() == DeliveryState.RETRY_SCHEDULED
+                    && delivery.nextAttemptAt() != null && !delivery.nextAttemptAt().isAfter(now)) {
+                current = attempt(current, entry.getKey(), recipientAddress);
+            }
+        }
+        stored.updateDeliveryState(current);
+        notificationRepository.saveAndFlush(stored);
+        return true;
     }
 
     private Notification attempt(Notification notification, NotificationChannel channel,
@@ -145,22 +227,21 @@ public class NotificationService {
     /**
      * The user's stored preferences, or the safe defaults.
      *
-     * <p>Defaults mean everything on. A user with no stored preferences must still
-     * receive security mail.
+     * <p>Preferences without a stored row use configured delivery-channel defaults.
      */
     @Transactional(readOnly = true)
     public NotificationPreferences preferencesFor(UUID userId) {
         var rows = preferencesRepository.findByUserId(userId);
         if (rows.isEmpty()) {
-            // No stored preference means the safe default: everything on.
-            return NotificationPreferences.defaultsFor(userId);
+            // No stored preference means configured channels, not unavailable providers.
+            return NotificationPreferences.defaultsFor(userId, availableChannels());
         }
         EnumMap<NotificationCategory, java.util.Set<NotificationChannel>> enabled =
                 new EnumMap<>(NotificationCategory.class);
         for (var row : rows) {
             enabled.put(row.getCategory(), row.decode());
         }
-        return NotificationPreferences.ofEnabled(userId, enabled);
+        return NotificationPreferences.ofEnabled(userId, enabled, availableChannels());
     }
 
     /**
@@ -169,7 +250,8 @@ public class NotificationService {
     @Transactional
     public NotificationPreferences updatePreferences(UUID userId,
             Map<NotificationCategory, java.util.Set<NotificationChannel>> disabled) {
-        NotificationPreferences validated = NotificationPreferences.of(userId, disabled);
+        NotificationPreferences validated = NotificationPreferences.of(userId, disabled,
+                availableChannels());
         for (var entry : validated.enabledByCategory().entrySet()) {
             preferencesRepository.save(new NotificationPreferenceEntity(userId,
                     entry.getKey(), entry.getValue()));
@@ -179,5 +261,9 @@ public class NotificationService {
 
     public NotificationRetryPolicy retryPolicy() {
         return retryPolicy;
+    }
+
+    public java.util.Set<NotificationChannel> availableChannels() {
+        return java.util.Set.copyOf(transports.keySet());
     }
 }

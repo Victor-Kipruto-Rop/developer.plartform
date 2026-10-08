@@ -20,7 +20,11 @@ class ProductionAccessRequestTest {
 
     private ProductionAccessRequest pending() {
         return ProductionAccessRequest.create(organizationId, projectId, environmentId, requester,
-                "Investigating a failed settlement batch", NOW);
+                "Investigating a failed settlement batch", "Settlement processor",
+                "Example company and operations contact", "Reconcile settled payment batches",
+                "transactions:read, reports:read", "Up to 500 requests per minute",
+                "Private backend worker with monitored callbacks", "Secrets managed in a vault",
+                NOW);
     }
 
     @Test
@@ -36,7 +40,9 @@ class ProductionAccessRequestTest {
     @Test
     void reasonIsRequired() {
         assertThatThrownBy(() -> ProductionAccessRequest.create(
-                organizationId, projectId, environmentId, requester, "  ", NOW))
+                organizationId, projectId, environmentId, requester, "  ", "Settlement processor",
+                "Example company details", "Reconcile payment batches", "transactions:read",
+                "500 requests per minute", "Private backend worker", "Secrets managed securely", NOW))
                 .isInstanceOf(IllegalArgumentException.class);
     }
 

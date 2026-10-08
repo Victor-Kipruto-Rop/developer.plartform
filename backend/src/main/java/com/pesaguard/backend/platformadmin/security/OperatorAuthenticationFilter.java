@@ -37,11 +37,19 @@ import jakarta.servlet.http.HttpServletResponse;
 public class OperatorAuthenticationFilter extends OncePerRequestFilter {
 
     private static final String BEARER = "Bearer ";
+    /** Kept out of the bearer token so a reason is specific to one customer action. */
+    public static final String OPERATOR_REASON_HEADER = "X-Operator-Reason";
 
     private final OperatorTokenService tokenService;
 
     public OperatorAuthenticationFilter(OperatorTokenService tokenService) {
         this.tokenService = tokenService;
+    }
+
+    @Override
+    protected boolean shouldNotFilter(HttpServletRequest request) {
+        return "GET".equals(request.getMethod())
+                && OperatorSecurityConfig.HEALTH_PATH.equals(request.getServletPath());
     }
 
     @Override
@@ -59,8 +67,11 @@ public class OperatorAuthenticationFilter extends OncePerRequestFilter {
             return;
         }
 
-        Authentication authentication = new OperatorAuthentication(
-                operator.get(), request);
+        AuthenticatedOperator tokenOperator = operator.get();
+        AuthenticatedOperator requestOperator = new AuthenticatedOperator(
+                tokenOperator.operatorId(), tokenOperator.subject(), tokenOperator.capabilities(),
+                request.getHeader(OPERATOR_REASON_HEADER));
+        Authentication authentication = new OperatorAuthentication(requestOperator, request);
         SecurityContextHolder.getContext().setAuthentication(authentication);
         try {
             filterChain.doFilter(request, response);

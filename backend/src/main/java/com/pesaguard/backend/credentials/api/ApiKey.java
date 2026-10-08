@@ -38,6 +38,9 @@ public class ApiKey {
     @Column(name = "secret_hash", nullable = false, unique = true, length = 64)
     private String secretHash;
 
+    @Column(name = "encrypted_secret")
+    private String encryptedSecret;
+
     @Column(name = "scopes", nullable = false, columnDefinition = "text")
     private String scopes;
 
@@ -72,6 +75,12 @@ public class ApiKey {
 
     @Column(name = "last_used_ip", length = 45)
     private String lastUsedIp;
+
+    @Column(name = "last_used_country", length = 2)
+    private String lastUsedCountry;
+
+    @Column(name = "last_used_device", length = 16)
+    private String lastUsedDevice;
 
     @Column(name = "suspended_at")
     private Instant suspendedAt;
@@ -137,7 +146,7 @@ public class ApiKey {
     }
 
     public void revoke(Instant now) {
-        if (status == ApiKeyStatus.REVOKED) {
+        if (status == ApiKeyStatus.REVOKED || status == ApiKeyStatus.COMPROMISED) {
             return;
         }
         if (status == ApiKeyStatus.EXPIRED) {
@@ -146,6 +155,19 @@ public class ApiKey {
         status = ApiKeyStatus.REVOKED;
         revokedAt = now;
         suspendedAt = null;
+        encryptedSecret = null;
+    }
+
+    public void markCompromised(Instant now) {
+        if (status == ApiKeyStatus.EXPIRED) {
+            throw new IllegalStateException("An expired key cannot be marked compromised");
+        }
+        if (status != ApiKeyStatus.COMPROMISED) {
+            status = ApiKeyStatus.COMPROMISED;
+            revokedAt = now;
+            suspendedAt = null;
+            encryptedSecret = null;
+        }
     }
 
     public void markExpired(Instant now) {
@@ -153,6 +175,7 @@ public class ApiKey {
             return;
         }
         status = ApiKeyStatus.EXPIRED;
+        encryptedSecret = null;
     }
 
     /**
@@ -160,9 +183,30 @@ public class ApiKey {
      * observed address are stored - never the presented secret.
      */
     public void recordUsage(Instant now, String remoteAddress) {
+        recordUsage(now, remoteAddress, null, null);
+    }
+
+    /**
+     * Stores only coarse activity metadata. The country must come from a trusted
+     * edge adapter that verifies the connecting proxy; never pass an arbitrary
+     * client-supplied country header here.
+     */
+    public void recordUsage(Instant now, String remoteAddress, String userAgent, String trustedCountryCode) {
         lastUsedAt = now;
         lastUsedIp = truncate(remoteAddress);
         requestCount++;
+        lastUsedDevice = deviceFamily(userAgent);
+        lastUsedCountry = trustedCountryCode != null && trustedCountryCode.matches("[A-Z]{2}")
+                && !trustedCountryCode.equals("XX") ? trustedCountryCode : null;
+    }
+
+    static String deviceFamily(String userAgent) {
+        if (userAgent == null || userAgent.isBlank()) return null;
+        String value = userAgent.toLowerCase(java.util.Locale.ROOT);
+        if (value.contains("bot") || value.contains("crawler") || value.contains("spider")) return "Bot";
+        if (value.contains("ipad") || value.contains("tablet")) return "Tablet";
+        if (value.contains("mobile") || value.contains("android") || value.contains("iphone")) return "Mobile";
+        return "Desktop";
     }
 
     /**
@@ -175,6 +219,21 @@ public class ApiKey {
     public void restrictToIps(java.util.Set<String> cidrs) {
         this.ipAllowlist = cidrs == null || cidrs.isEmpty() ? null
                 : cidrs.stream().sorted().collect(java.util.stream.Collectors.joining(","));
+    }
+
+    public void updateScopes(String encodedScopes) {
+        this.scopes = encodedScopes;
+    }
+
+    public void rename(String name) {
+        this.name = name;
+    }
+
+    public void storeEncryptedSecret(String encryptedSecret) {
+        if (encryptedSecret == null || encryptedSecret.isBlank()) {
+            throw new IllegalArgumentException("An encrypted API-key secret is required");
+        }
+        this.encryptedSecret = encryptedSecret;
     }
 
     private static String truncate(String value) {
@@ -210,6 +269,7 @@ public class ApiKey {
     public String getName() { return name; }
     public String getKeyPrefix() { return keyPrefix; }
     public String getSecretHash() { return secretHash; }
+    public String getEncryptedSecret() { return encryptedSecret; }
     public String getScopes() { return scopes; }
     public ApiKeyStatus getStatus() { return status; }
     public Instant getExpiresAt() { return expiresAt; }
@@ -222,5 +282,7 @@ public class ApiKey {
     public String getIpAllowlist() { return ipAllowlist; }
     public long getRequestCount() { return requestCount; }
     public String getLastUsedIp() { return lastUsedIp; }
+    public String getLastUsedCountry() { return lastUsedCountry; }
+    public String getLastUsedDevice() { return lastUsedDevice; }
     public Instant getSuspendedAt() { return suspendedAt; }
 }

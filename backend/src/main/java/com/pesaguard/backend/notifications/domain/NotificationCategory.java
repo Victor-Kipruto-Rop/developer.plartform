@@ -9,10 +9,23 @@ package com.pesaguard.backend.notifications.domain;
  */
 public enum NotificationCategory {
 
+    ACCOUNT,
+    ORGANIZATION,
+    PROJECT,
+    ENVIRONMENT,
     CREDENTIAL,
+    API_KEY,
+    API_USAGE,
     WEBHOOK,
+    INTEGRATION,
+    TEAM,
+    BILLING,
+    SYSTEM,
+    DEVELOPER,
+    PLATFORM,
     USAGE,
     PRODUCTION,
+    SUPPORT,
 
     /**
      * Security signals about the account itself.

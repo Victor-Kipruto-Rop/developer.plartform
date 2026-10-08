@@ -17,10 +17,13 @@ import com.pesaguard.backend.common.exception.ResourceConflictException;
 import com.pesaguard.backend.common.exception.ResourceNotFoundException;
 import com.pesaguard.backend.environment.api.CreateEnvironmentRequest;
 import com.pesaguard.backend.environment.api.EnvironmentHistoryView;
+import com.pesaguard.backend.environment.api.EnvironmentLimitsView;
 import com.pesaguard.backend.environment.api.EnvironmentView;
 import com.pesaguard.backend.environment.api.PromoteEnvironmentRequest;
 import com.pesaguard.backend.environment.api.UpdateEnvironmentConfigurationRequest;
+import com.pesaguard.backend.environment.api.UpdateEnvironmentLimitsRequest;
 import com.pesaguard.backend.environment.domain.EnvironmentHistory;
+import com.pesaguard.backend.environment.domain.EnvironmentPermission;
 import com.pesaguard.backend.environment.domain.EnvironmentLimits;
 import com.pesaguard.backend.environment.domain.EnvironmentStatus;
 import com.pesaguard.backend.environment.domain.EnvironmentType;
@@ -28,7 +31,8 @@ import com.pesaguard.backend.environment.domain.ProjectEnvironment;
 import com.pesaguard.backend.environment.infrastructure.EnvironmentHistoryRepository;
 import com.pesaguard.backend.environment.infrastructure.EnvironmentLimitsRepository;
 import com.pesaguard.backend.environment.infrastructure.ProjectEnvironmentRepository;
-import com.pesaguard.backend.project.application.ProjectMetadataValidator;
+import com.pesaguard.backend.integration.application.IntegrationProvisioningService;
+import com.pesaguard.backend.project.application.ProjectAuthorization;
 import com.pesaguard.backend.project.domain.Project;
 import com.pesaguard.backend.project.domain.ProjectStatus;
 import com.pesaguard.backend.project.infrastructure.ProjectRepository;
@@ -44,7 +48,10 @@ public class EnvironmentService {
     private final EnvironmentLimitsRepository limitsRepository;
     private final EnvironmentHistoryRepository historyRepository;
     private final AuthorizationService authorizationService;
-    private final ProjectMetadataValidator configurationValidator;
+    private final ProjectAuthorization projectAuthorization;
+    private final EnvironmentAccessPolicyService accessPolicyService;
+    private final EnvironmentConfigurationValidator configurationValidator;
+    private final IntegrationProvisioningService integrationProvisioning;
     private final AuditService auditService;
     private final Clock clock;
 
@@ -54,7 +61,10 @@ public class EnvironmentService {
             EnvironmentLimitsRepository limitsRepository,
             EnvironmentHistoryRepository historyRepository,
             AuthorizationService authorizationService,
-            ProjectMetadataValidator configurationValidator,
+            ProjectAuthorization projectAuthorization,
+            EnvironmentAccessPolicyService accessPolicyService,
+            EnvironmentConfigurationValidator configurationValidator,
+            IntegrationProvisioningService integrationProvisioning,
             AuditService auditService,
             Clock clock) {
         this.environmentRepository = environmentRepository;
@@ -62,7 +72,10 @@ public class EnvironmentService {
         this.limitsRepository = limitsRepository;
         this.historyRepository = historyRepository;
         this.authorizationService = authorizationService;
+        this.projectAuthorization = projectAuthorization;
+        this.accessPolicyService = accessPolicyService;
         this.configurationValidator = configurationValidator;
+        this.integrationProvisioning = integrationProvisioning;
         this.auditService = auditService;
         this.clock = clock;
     }
@@ -71,6 +84,7 @@ public class EnvironmentService {
     public EnvironmentView create(AuthenticatedUser principal, UUID projectId, CreateEnvironmentRequest request) {
         authorizationService.requirePermission(principal, Permission.ENVIRONMENT_CREATE);
         Project project = requireProject(principal, projectId);
+        projectAuthorization.requireProjectManage(principal, projectId);
         if (project.getStatus() != ProjectStatus.ACTIVE) {
             throw new ResourceConflictException("PROJECT_NOT_ACTIVE",
                     "Only an active project can receive environments.");
@@ -87,6 +101,8 @@ public class EnvironmentService {
         Instant now = clock.instant();
         ProjectEnvironment environment = environmentRepository.saveAndFlush(ProjectEnvironment.create(
                 principal.organizationId(), projectId, name, request.type(), principal.userId(), now));
+        integrationProvisioning.ensureDefault(principal.organizationId(), projectId,
+                environment.getId(), environment.getType(), now);
         limitsRepository.saveAndFlush(EnvironmentLimits.defaults(
                 environment.getId(), principal.organizationId(), projectId, now));
         historyRepository.save(EnvironmentHistory.record(principal.organizationId(), projectId,
@@ -104,22 +120,30 @@ public class EnvironmentService {
         requireProject(principal, projectId);
         return environmentRepository.findByOrganizationIdAndProjectIdOrderByCreatedAtAsc(
                         principal.organizationId(), projectId)
-                .stream().map(this::toView).toList();
+                .stream().filter(environment -> accessPolicyService.canAccess(
+                        principal, environment, EnvironmentPermission.READ))
+                .map(this::toView).toList();
     }
 
     @Transactional(readOnly = true)
     public EnvironmentView get(AuthenticatedUser principal, UUID projectId, UUID environmentId) {
         authorizationService.requirePermission(principal, Permission.ENVIRONMENT_READ);
-        return toView(require(principal, projectId, environmentId));
+        ProjectEnvironment environment = require(principal, projectId, environmentId);
+        accessPolicyService.requireAccess(principal, environment, EnvironmentPermission.READ);
+        return toView(environment);
     }
 
     @Transactional
     public EnvironmentView updateConfiguration(AuthenticatedUser principal, UUID projectId, UUID environmentId,
             UpdateEnvironmentConfigurationRequest request) {
         authorizationService.requirePermission(principal, Permission.ENVIRONMENT_UPDATE);
-        ProjectEnvironment environment = require(principal, projectId, environmentId);
+        projectAuthorization.requireProjectManage(principal, projectId);
+        ProjectEnvironment environment = environmentRepository.findByIdAndOrganizationIdAndProjectIdForUpdate(
+                environmentId, principal.organizationId(), projectId)
+                .orElseThrow(() -> new ResourceNotFoundException("Environment"));
         requireWritable(environment);
-        configurationValidator.validate(request.configuration());
+        accessPolicyService.requireAccess(principal, environment, EnvironmentPermission.WRITE);
+        configurationValidator.validate(request.configuration(), environment.getType());
         environment.updateConfiguration(request.configuration());
         environmentRepository.saveAndFlush(environment);
         history(principal, projectId, environment, "environment.configuration_updated");
@@ -129,7 +153,9 @@ public class EnvironmentService {
     @Transactional
     public EnvironmentView suspend(AuthenticatedUser principal, UUID projectId, UUID environmentId) {
         authorizationService.requirePermission(principal, Permission.ENVIRONMENT_UPDATE);
+        projectAuthorization.requireProjectManage(principal, projectId);
         ProjectEnvironment environment = require(principal, projectId, environmentId);
+        accessPolicyService.requireAccess(principal, environment, EnvironmentPermission.WRITE);
         requireWritable(environment);
         environment.suspend(clock.instant());
         environmentRepository.saveAndFlush(environment);
@@ -140,7 +166,9 @@ public class EnvironmentService {
     @Transactional
     public EnvironmentView resume(AuthenticatedUser principal, UUID projectId, UUID environmentId) {
         authorizationService.requirePermission(principal, Permission.ENVIRONMENT_UPDATE);
+        projectAuthorization.requireProjectManage(principal, projectId);
         ProjectEnvironment environment = require(principal, projectId, environmentId);
+        accessPolicyService.requireAccess(principal, environment, EnvironmentPermission.WRITE);
         environment.resume(clock.instant());
         environmentRepository.saveAndFlush(environment);
         history(principal, projectId, environment, "environment.resumed");
@@ -150,23 +178,23 @@ public class EnvironmentService {
     @Transactional
     public EnvironmentView deactivate(AuthenticatedUser principal, UUID projectId, UUID environmentId) {
         authorizationService.requirePermission(principal, Permission.ENVIRONMENT_UPDATE);
+        projectAuthorization.requireProjectManage(principal, projectId);
         ProjectEnvironment environment = require(principal, projectId, environmentId);
+        accessPolicyService.requireAccess(principal, environment, EnvironmentPermission.WRITE);
         environment.deactivate(clock.instant());
         environmentRepository.saveAndFlush(environment);
         history(principal, projectId, environment, "environment.deactivated");
         return toView(environment);
     }
 
-    /**
-     * Promotes an environment exactly one tier. A PRODUCTION environment can only
-     * be reached by promotion, never created directly, and the target tier must be
-     * free.
-     */
+    /** Promotes an environment exactly one tier; the target tier must be free. */
     @Transactional
     public EnvironmentView promote(AuthenticatedUser principal, UUID projectId, UUID environmentId,
             PromoteEnvironmentRequest request) {
         authorizationService.requirePermission(principal, Permission.ENVIRONMENT_UPDATE);
+        projectAuthorization.requireProjectManage(principal, projectId);
         ProjectEnvironment environment = require(principal, projectId, environmentId);
+        accessPolicyService.requireAccess(principal, environment, EnvironmentPermission.DEPLOY);
         requireWritable(environment);
         EnvironmentType target = request.targetType();
         if (!environment.getType().canPromoteTo(target)) {
@@ -191,9 +219,44 @@ public class EnvironmentService {
     @Transactional
     public List<EnvironmentHistoryView> history(AuthenticatedUser principal, UUID projectId, UUID environmentId) {
         authorizationService.requirePermission(principal, Permission.ENVIRONMENT_READ);
-        require(principal, projectId, environmentId);
+        ProjectEnvironment environment = require(principal, projectId, environmentId);
+        accessPolicyService.requireAccess(principal, environment, EnvironmentPermission.READ);
         return historyRepository.findByEnvironmentIdOrderByCreatedAtDesc(environmentId).stream()
                 .map(this::toHistoryView).toList();
+    }
+
+    @Transactional(readOnly = true)
+    public EnvironmentLimitsView limits(AuthenticatedUser principal, UUID projectId, UUID environmentId) {
+        authorizationService.requirePermission(principal, Permission.ENVIRONMENT_READ);
+        requireProject(principal, projectId);
+        ProjectEnvironment environment = require(principal, projectId, environmentId);
+        accessPolicyService.requireAccess(principal, environment, EnvironmentPermission.READ);
+        return limitsRepository.findByEnvironmentId(environmentId).map(EnvironmentLimitsView::from)
+                .orElseThrow(() -> new ResourceNotFoundException("Environment limits"));
+    }
+
+    @Transactional
+    public EnvironmentLimitsView updateLimits(AuthenticatedUser principal, UUID projectId, UUID environmentId,
+            UpdateEnvironmentLimitsRequest request) {
+        authorizationService.requirePermission(principal, Permission.ENVIRONMENT_UPDATE);
+        projectAuthorization.requireProjectManage(principal, projectId);
+        ProjectEnvironment environment = environmentRepository.findByIdAndOrganizationIdAndProjectIdForUpdate(
+                environmentId, principal.organizationId(), projectId)
+                .orElseThrow(() -> new ResourceNotFoundException("Environment"));
+        requireWritable(environment);
+        accessPolicyService.requireAccess(principal, environment, EnvironmentPermission.WRITE);
+        EnvironmentLimits limits = limitsRepository.findByEnvironmentId(environmentId)
+                .orElseThrow(() -> new ResourceNotFoundException("Environment limits"));
+        limits.update(request.requestsPerMinute(), request.burstRequests(), request.maxApiKeys(),
+                request.maxCredentials(), request.credentialRotationIntervalMinutes(),
+                principal.userId(), clock.instant());
+        limitsRepository.saveAndFlush(limits);
+        auditService.append(principal.organizationId(), principal.userId(), "environment.limits.updated",
+                "environment_limits", environmentId.toString(), RequestContext.currentRequestId(),
+                Map.of("requestsPerMinute", request.requestsPerMinute(), "burstRequests", request.burstRequests(),
+                        "maxApiKeys", request.maxApiKeys(), "maxCredentials", request.maxCredentials(),
+                        "credentialRotationIntervalMinutes", request.credentialRotationIntervalMinutes()));
+        return EnvironmentLimitsView.from(limits);
     }
 
     private void requireWritable(ProjectEnvironment environment) {
@@ -205,8 +268,10 @@ public class EnvironmentService {
     }
 
     private Project requireProject(AuthenticatedUser principal, UUID projectId) {
-        return projectRepository.findByIdAndOrganizationId(projectId, principal.organizationId())
+        Project project = projectRepository.findByIdAndOrganizationId(projectId, principal.organizationId())
                 .orElseThrow(() -> new ResourceNotFoundException("Project"));
+        projectAuthorization.requireProjectRead(principal, projectId);
+        return project;
     }
 
     private ProjectEnvironment require(AuthenticatedUser principal, UUID projectId, UUID environmentId) {

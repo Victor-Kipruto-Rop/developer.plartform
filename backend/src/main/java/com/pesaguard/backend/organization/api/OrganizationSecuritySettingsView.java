@@ -13,6 +13,7 @@ public record OrganizationSecuritySettingsView(
         int credentialMinLength,
         int credentialMaxLength,
         boolean mfaRequired,
+        boolean mfaRequiredForAdmins,
         Set<String> ipAllowlist,
         Set<String> securityEventTypes,
         Instant updatedAt) {

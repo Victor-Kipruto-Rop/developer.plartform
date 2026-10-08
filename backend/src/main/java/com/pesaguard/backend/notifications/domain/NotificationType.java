@@ -42,12 +42,18 @@ public enum NotificationType {
     PRODUCTION_REVIEW_STARTED(NotificationCategory.PRODUCTION, false),
     PRODUCTION_APPROVED(NotificationCategory.PRODUCTION, false),
     PRODUCTION_REJECTED(NotificationCategory.PRODUCTION, false),
+    PRODUCTION_ACTIVATED(NotificationCategory.PRODUCTION, false),
+    PRODUCTION_REACTIVATED(NotificationCategory.PRODUCTION, false),
 
     /**
      * Mandatory: a live production grant has been withdrawn. The integration is
      * stopped, and the developer must know why.
      */
     PRODUCTION_SUSPENDED(NotificationCategory.PRODUCTION, true),
+    PRODUCTION_REVOKED(NotificationCategory.PRODUCTION, true),
+
+    SUPPORT_TICKET_CREATED(NotificationCategory.SUPPORT, false),
+    SUPPORT_TICKET_RESOLVED(NotificationCategory.SUPPORT, true),
 
     // Security
     SUSPICIOUS_ACTIVITY(NotificationCategory.SECURITY, true),

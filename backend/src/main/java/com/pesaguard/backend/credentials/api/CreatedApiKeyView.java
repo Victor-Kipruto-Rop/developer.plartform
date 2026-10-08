@@ -10,5 +10,6 @@ public record CreatedApiKeyView(
         String key,
         String prefix,
         Set<String> scopes,
-        Instant expiresAt) {
+        Instant expiresAt,
+        String baseUrl) {
 }

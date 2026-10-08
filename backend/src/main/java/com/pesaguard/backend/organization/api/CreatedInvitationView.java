@@ -7,6 +7,6 @@ public record CreatedInvitationView(
         UUID id,
         String email,
         String role,
-        String token,
-        Instant expiresAt) {
+        Instant expiresAt,
+        String deliveryStatus) {
 }

@@ -14,6 +14,8 @@ public record InvitationView(
         Instant expiresAt,
         UUID invitedBy,
         Instant acceptedAt,
+        Instant declinedAt,
         Instant revokedAt,
+        Instant cancelledAt,
         Instant createdAt) {
 }

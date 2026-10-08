@@ -66,7 +66,49 @@ public enum Permission {
     SECURITY_CONTROL("security:control"),
 
     PRODUCTION_ACCESS_REQUEST("production_access:request"),
-    PRODUCTION_ACCESS_REVIEW("production_access:review");
+    PRODUCTION_ACCESS_REVIEW("production_access:review"),
+    PRODUCTION_VIEW("production:view"),
+    PRODUCTION_VERIFY("production:verify"),
+    PRODUCTION_LAUNCH("production:launch"),
+    PRODUCTION_SUSPEND("production:suspend"),
+    PRODUCTION_RESUME("production:resume"),
+
+    /**
+     * Reading an organization's own settings, without being able to change them.
+     *
+     * <p>Separate from ORGANIZATION_READ so a workspace's security posture can be
+     * shown to someone who is not being trusted to alter it -- the read-only half
+     * of an administrator's power.
+     */
+    WORKSPACE_SETTINGS_READ("workspace_settings:read"),
+
+    /**
+     * Changing an organization's settings.
+     *
+     * <p>Held only by OWNER and ADMIN. It is the power to weaken session lifetime,
+     * disable the password login method, or widen IP restrictions, so it is not
+     * bundled into the general update permission: renaming a workspace must never
+     * imply the ability to relax its security posture.
+     */
+    WORKSPACE_SETTINGS_UPDATE("workspace_settings:update"),
+
+    /**
+     * Inviting people into an organization.
+     *
+     * <p>Separate from membership administration. Issuing an invitation is how
+     * unverified outsiders are brought in, and a role that can remove members but
+     * not add them is a deliberately incomplete administration power; this keeps
+     * the two separable for teams that split them.
+     */
+    WORKSPACE_INVITE("workspace:invite"),
+
+    /**
+     * Removing or suspending members.
+     *
+     * <p>Separate from WORKSPACE_INVITE so that inviting and expelling can be
+     * granted independently.
+     */
+    WORKSPACE_MEMBER_REMOVE("workspace_member:remove");
 
     private final String value;
 

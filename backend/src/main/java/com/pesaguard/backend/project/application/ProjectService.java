@@ -26,6 +26,7 @@ import com.pesaguard.backend.project.domain.Project;
 import com.pesaguard.backend.project.domain.ProjectStatus;
 import com.pesaguard.backend.project.infrastructure.ProjectRepository;
 import com.pesaguard.backend.security.principals.AuthenticatedUser;
+import com.pesaguard.backend.events.application.DeveloperEventEmitter;
 
 @Service
 public class ProjectService {
@@ -40,6 +41,7 @@ public class ProjectService {
     private final com.pesaguard.backend.organization.infrastructure.OrganizationMembershipRepository
             organizationMembershipRepository;
     private final java.time.Clock clock;
+    private final DeveloperEventEmitter developerEventEmitter;
 
     public ProjectService(
             ProjectRepository projectRepository,
@@ -51,7 +53,8 @@ public class ProjectService {
             com.pesaguard.backend.project.infrastructure.ProjectMemberRepository memberRepository,
             com.pesaguard.backend.organization.infrastructure.OrganizationMembershipRepository
                     organizationMembershipRepository,
-            java.time.Clock clock) {
+            java.time.Clock clock,
+            DeveloperEventEmitter developerEventEmitter) {
         this.projectRepository = projectRepository;
         this.auditService = auditService;
         this.authorization = authorization;
@@ -61,6 +64,7 @@ public class ProjectService {
         this.memberRepository = memberRepository;
         this.organizationMembershipRepository = organizationMembershipRepository;
         this.clock = clock;
+        this.developerEventEmitter = developerEventEmitter;
     }
 
     @Transactional
@@ -81,6 +85,7 @@ public class ProjectService {
         auditService.append(
                 principal.organizationId(), principal.userId(), "project.created", "project",
                 project.getId().toString(), RequestContext.currentRequestId(), Map.of("slug", project.getSlug()));
+        developerEventEmitter.projectCreated(project);
         return toView(project);
     }
 
@@ -97,10 +102,13 @@ public class ProjectService {
         authorizationService.requirePermission(principal, Permission.PROJECT_READ);
         int safeSize = Math.min(Math.max(size, 1), 100);
         int safePage = Math.max(page, 0);
-        Page<ProjectView> result = projectRepository
-                .findByOrganizationIdOrderByCreatedAtDesc(
-                        principal.organizationId(), PageRequest.of(safePage, safeSize))
-                .map(this::toView);
+        PageRequest pageable = PageRequest.of(safePage, safeSize);
+        Page<Project> projects = authorization.isOrganizationManager(principal)
+                ? projectRepository.findByOrganizationIdOrderByCreatedAtDesc(
+                        principal.organizationId(), pageable)
+                : projectRepository.findVisibleToProjectMember(
+                        principal.organizationId(), principal.userId(), pageable);
+        Page<ProjectView> result = projects.map(this::toView);
         return PageResponse.of(result.getContent(), result.getNumber(), result.getSize(), result.getTotalElements());
     }
 
@@ -114,6 +122,7 @@ public class ProjectService {
         }
         project.archive(clock.instant());
         projectRepository.saveAndFlush(project);
+        developerEventEmitter.projectUpdated(project, java.util.List.of("status"));
         audit(principal, "project.archived", projectId, Map.of("status", ProjectStatus.ARCHIVED.name()));
         return toView(project);
     }
@@ -132,6 +141,7 @@ public class ProjectService {
         metadataValidator.validate(request.metadata());
         project.update(request.name().trim(), request.description(), request.metadata());
         projectRepository.saveAndFlush(project);
+        developerEventEmitter.projectUpdated(project, java.util.List.of("name", "description", "metadata"));
         audit(principal, "project.updated", projectId, Map.of());
         return toView(project);
     }
@@ -143,6 +153,7 @@ public class ProjectService {
         authorization.requireProjectManage(principal, projectId);
         project.restore(clock.instant());
         projectRepository.saveAndFlush(project);
+        developerEventEmitter.projectUpdated(project, java.util.List.of("status"));
         audit(principal, "project.restored", projectId, Map.of("status", project.getStatus().name()));
         return toView(project);
     }
@@ -154,6 +165,7 @@ public class ProjectService {
         authorization.requireProjectManage(principal, projectId);
         project.deactivate(clock.instant());
         projectRepository.saveAndFlush(project);
+        developerEventEmitter.projectUpdated(project, java.util.List.of("status"));
         audit(principal, "project.deactivated", projectId, Map.of("status", project.getStatus().name()));
         return toView(project);
     }
@@ -165,6 +177,7 @@ public class ProjectService {
         authorization.requireProjectManage(principal, projectId);
         project.activate(clock.instant());
         projectRepository.saveAndFlush(project);
+        developerEventEmitter.projectUpdated(project, java.util.List.of("status"));
         audit(principal, "project.activated", projectId, Map.of("status", project.getStatus().name()));
         return toView(project);
     }
@@ -195,6 +208,7 @@ public class ProjectService {
                         "The new project owner must be an active member of the organization."));
         project.transferOwnership(request.userId());
         projectRepository.saveAndFlush(project);
+        developerEventEmitter.projectUpdated(project, java.util.List.of("ownerUserId"));
         audit(principal, "project.ownership_transferred", projectId, Map.of("newOwnerUserId", request.userId().toString()));
         return toView(project);
     }

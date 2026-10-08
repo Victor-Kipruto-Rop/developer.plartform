@@ -47,6 +47,9 @@ public class ApiScopeDefinition {
     @Column(name = "restricted", nullable = false)
     private boolean restricted;
 
+    @Column(name = "api_key_assignable", nullable = false)
+    private boolean apiKeyAssignable;
+
     @Column(name = "deprecated", nullable = false)
     private boolean deprecated;
 
@@ -127,6 +130,7 @@ public class ApiScopeDefinition {
     public String getAction() { return action; }
     public int getVersion() { return version; }
     public boolean isRestricted() { return restricted; }
+    public boolean isApiKeyAssignable() { return apiKeyAssignable; }
     public boolean isDeprecated() { return deprecated; }
     public String getReplacedBy() { return replacedBy; }
     public String getChangeReason() { return changeReason; }

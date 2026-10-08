@@ -3,6 +3,7 @@ package com.pesaguard.backend.ratelimit.infrastructure;
 import java.io.IOException;
 import java.time.Clock;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 
@@ -16,6 +17,8 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
+import com.pesaguard.backend.common.api.RequestContext;
+import com.pesaguard.backend.common.api.SafeExceptionDiagnostics;
 import com.pesaguard.backend.ratelimit.application.RateLimitService;
 import com.pesaguard.backend.ratelimit.application.RateLimitService.RateLimitRequest;
 import com.pesaguard.backend.ratelimit.domain.RateLimitDecision;
@@ -38,10 +41,9 @@ import jakarta.servlet.http.HttpServletResponse;
  * <p>Three properties are deliberate:
  *
  * <ul>
- *   <li><b>It cannot fail a request.</b> A limiter outage degrades to
- *       unenforced, never to a 5xx. Taking the payment API down because a
- *       counter store is unreachable is a worse outcome than briefly admitting
- *       more traffic.</li>
+ *   <li><b>It fails closed.</b> If the counter store is unavailable, the request
+ *       is rejected with a retryable 503 rather than bypassing the configured
+ *       protection.</li>
  *   <li><b>It sets headers on every response</b>, not only on rejection, so an
  *       integrator can see remaining budget before they hit a wall.</li>
  *   <li><b>It charges before the work is done.</b> A rejected request still
@@ -96,7 +98,7 @@ public class RateLimitFilter extends OncePerRequestFilter {
             FilterChain filterChain) throws ServletException, IOException {
         RateLimitService service = serviceProvider.getIfAvailable();
         if (service == null) {
-            filterChain.doFilter(request, response);
+            rejectLimiterUnavailable(request, response);
             return;
         }
 
@@ -106,22 +108,52 @@ public class RateLimitFilter extends OncePerRequestFilter {
             decision = service.check(rateLimitRequest(request, organization),
                     List.of(baselinePolicyFor(organization)));
         } catch (RuntimeException limiterFailure) {
-            // Fail open, loudly. A throttling fault must not become a payment outage.
-            log.error("rate limiter failed; failing open", limiterFailure);
-            filterChain.doFilter(request, response);
+            log.error("Rate limiter unavailable requestId={} type={} diagnostic={}",
+                    RequestContext.requestId(request), limiterFailure.getClass().getName(),
+                    SafeExceptionDiagnostics.stackTrace(limiterFailure));
+            rejectLimiterUnavailable(request, response);
             return;
         }
 
         applyHeaders(response, decision);
 
         if (!decision.allowed()) {
-            response.setStatus(HttpServletResponse.SC_TOO_MANY_REQUESTS);
+            // 429: SC_TOO_MANY_REQUESTS is not exposed on this Servlet API version.
+            response.setStatus(429);
+            response.setHeader("Cache-Control", "no-store");
             response.setContentType("application/json");
             response.getWriter().write(
-                    "{\"error\":{\"code\":\"RATE_LIMITED\",\"message\":\"Too many requests.\"}}");
+                    "{\"error\":{\"code\":\"RATE_LIMITED\","
+                            + "\"message\":\"You're sending requests too quickly. Please try again shortly.\","
+                            + "\"requestId\":\"" + RequestContext.requestId(request) + "\","
+                            + "\"timestamp\":\"" + Instant.now() + "\",\"violations\":[]}}");
             return;
         }
-        filterChain.doFilter(request, response);
+        try {
+            filterChain.doFilter(request, response);
+        } finally {
+            Object environmentDecision = request.getAttribute(
+                    RateLimitService.RESPONSE_DECISION_ATTRIBUTE);
+            if (environmentDecision instanceof RateLimitDecision appliedEnvironmentLimit) {
+                // The resource-specific policy is stricter and more actionable than
+                // the general IP bucket, so it owns the final response headers.
+                applyHeaders(response, appliedEnvironmentLimit);
+            }
+        }
+    }
+
+    private static void rejectLimiterUnavailable(
+            HttpServletRequest request,
+            HttpServletResponse response) throws IOException {
+        response.setStatus(HttpServletResponse.SC_SERVICE_UNAVAILABLE);
+        response.setHeader(HEADER_RETRY_AFTER, "5");
+        response.setHeader("Cache-Control", "no-store");
+        response.setContentType("application/json");
+        response.getWriter().write(
+                "{\"error\":{\"code\":\"SERVICE_UNAVAILABLE\","
+                        + "\"message\":\"This service is temporarily unavailable. Please try again shortly.\","
+                        + "\"requestId\":\"" + RequestContext.requestId(request) + "\","
+                        + "\"timestamp\":\"" + Instant.now() + "\",\"violations\":[]}}");
     }
 
     /**

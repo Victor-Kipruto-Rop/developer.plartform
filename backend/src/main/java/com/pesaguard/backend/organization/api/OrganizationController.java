@@ -15,16 +15,15 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.pesaguard.backend.common.api.ApiResponse;
-import com.pesaguard.backend.security.authentication.AuthenticationResponse;
 import com.pesaguard.backend.organization.application.OrganizationLifecycleService;
 import com.pesaguard.backend.organization.application.OrganizationMembershipService;
 import com.pesaguard.backend.organization.application.OrganizationSecuritySettingsService;
 import com.pesaguard.backend.security.principals.AuthenticatedUser;
 
-import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 
 @RestController
@@ -153,23 +152,29 @@ public class OrganizationController {
     }
 
     @PostMapping("/invitations")
-    @PreAuthorize("hasAnyRole('OWNER', 'ADMIN')")
     ResponseEntity<ApiResponse<CreatedInvitationView>> invite(
             @AuthenticationPrincipal AuthenticatedUser principal,
+            @RequestHeader("Idempotency-Key") String idempotencyKey,
             @Valid @RequestBody CreateInvitationRequest request) {
         return ResponseEntity.status(201)
                 .header(HttpHeaders.CACHE_CONTROL, "no-store")
-                .body(ApiResponse.of(membershipService.invite(principal, request)));
+                .body(ApiResponse.of(membershipService.invite(principal, request, idempotencyKey)));
     }
 
     @GetMapping("/invitations")
-    @PreAuthorize("hasAnyRole('OWNER', 'ADMIN')")
     ApiResponse<List<InvitationView>> invitations(@AuthenticationPrincipal AuthenticatedUser principal) {
         return ApiResponse.of(membershipService.invitations(principal));
     }
 
+    @PostMapping("/invitations/{invitationId}/resend")
+    ResponseEntity<ApiResponse<CreatedInvitationView>> resendInvitation(
+            @AuthenticationPrincipal AuthenticatedUser principal,
+            @PathVariable UUID invitationId) {
+        return ResponseEntity.ok().header(HttpHeaders.CACHE_CONTROL, "no-store")
+                .body(ApiResponse.of(membershipService.resendInvitation(principal, invitationId)));
+    }
+
     @DeleteMapping("/invitations/{invitationId}")
-    @PreAuthorize("hasAnyRole('OWNER', 'ADMIN')")
     ResponseEntity<Void> revokeInvitation(
             @AuthenticationPrincipal AuthenticatedUser principal,
             @PathVariable UUID invitationId) {
@@ -177,12 +182,4 @@ public class OrganizationController {
         return ResponseEntity.noContent().build();
     }
 
-    @PostMapping("/invitations/accept")
-    ResponseEntity<ApiResponse<AuthenticationResponse>> accept(
-            @Valid @RequestBody AcceptInvitationRequest request,
-            HttpServletRequest servletRequest) {
-        return ResponseEntity.status(201)
-                .header(HttpHeaders.CACHE_CONTROL, "no-store")
-                .body(ApiResponse.of(membershipService.accept(request, servletRequest.getRemoteAddr())));
-    }
 }

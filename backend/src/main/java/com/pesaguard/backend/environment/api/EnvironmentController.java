@@ -5,6 +5,7 @@ import java.util.UUID;
 
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -15,6 +16,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.pesaguard.backend.common.api.ApiResponse;
 import com.pesaguard.backend.environment.application.EnvironmentService;
+import com.pesaguard.backend.environment.application.EnvironmentAccessPolicyService;
 import com.pesaguard.backend.security.principals.AuthenticatedUser;
 
 import jakarta.validation.Valid;
@@ -28,9 +30,12 @@ import jakarta.validation.Valid;
 public class EnvironmentController {
 
     private final EnvironmentService environmentService;
+    private final EnvironmentAccessPolicyService accessPolicyService;
 
-    public EnvironmentController(EnvironmentService environmentService) {
+    public EnvironmentController(EnvironmentService environmentService,
+            EnvironmentAccessPolicyService accessPolicyService) {
         this.environmentService = environmentService;
+        this.accessPolicyService = accessPolicyService;
     }
 
     @PostMapping
@@ -51,11 +56,46 @@ public class EnvironmentController {
         return ApiResponse.of(environmentService.get(principal, projectId, environmentId));
     }
 
+    @GetMapping("/{environmentId}/access-policies")
+    ApiResponse<List<EnvironmentAccessPolicyView>> accessPolicies(
+            @AuthenticationPrincipal AuthenticatedUser principal, @PathVariable UUID projectId,
+            @PathVariable UUID environmentId) {
+        return ApiResponse.of(accessPolicyService.list(principal, projectId, environmentId));
+    }
+
+    @PutMapping("/{environmentId}/access-policies")
+    ApiResponse<EnvironmentAccessPolicyView> upsertAccessPolicy(
+            @AuthenticationPrincipal AuthenticatedUser principal, @PathVariable UUID projectId,
+            @PathVariable UUID environmentId,
+            @Valid @RequestBody UpsertEnvironmentAccessPolicyRequest request) {
+        return ApiResponse.of(accessPolicyService.upsert(principal, projectId, environmentId, request));
+    }
+
+    @DeleteMapping("/{environmentId}/access-policies/{policyId}")
+    ApiResponse<String> deleteAccessPolicy(@AuthenticationPrincipal AuthenticatedUser principal,
+            @PathVariable UUID projectId, @PathVariable UUID environmentId, @PathVariable UUID policyId) {
+        accessPolicyService.delete(principal, projectId, environmentId, policyId);
+        return ApiResponse.of("deleted");
+    }
+
     @PutMapping("/{environmentId}/configuration")
     ApiResponse<EnvironmentView> updateConfiguration(@AuthenticationPrincipal AuthenticatedUser principal,
             @PathVariable UUID projectId, @PathVariable UUID environmentId,
             @Valid @RequestBody UpdateEnvironmentConfigurationRequest request) {
         return ApiResponse.of(environmentService.updateConfiguration(principal, projectId, environmentId, request));
+    }
+
+    @GetMapping("/{environmentId}/limits")
+    ApiResponse<EnvironmentLimitsView> limits(@AuthenticationPrincipal AuthenticatedUser principal,
+            @PathVariable UUID projectId, @PathVariable UUID environmentId) {
+        return ApiResponse.of(environmentService.limits(principal, projectId, environmentId));
+    }
+
+    @PutMapping("/{environmentId}/limits")
+    ApiResponse<EnvironmentLimitsView> updateLimits(@AuthenticationPrincipal AuthenticatedUser principal,
+            @PathVariable UUID projectId, @PathVariable UUID environmentId,
+            @Valid @RequestBody UpdateEnvironmentLimitsRequest request) {
+        return ApiResponse.of(environmentService.updateLimits(principal, projectId, environmentId, request));
     }
 
     @PostMapping("/{environmentId}/suspend")

@@ -21,10 +21,8 @@ import jakarta.persistence.Table;
 /**
  * One row per user and category: which channels are enabled for it.
  *
- * <p>Stores what is <b>enabled</b>, not what is disabled. A category introduced
- * after a user configured their preferences therefore starts fully enabled rather
- * than silently switched off, which is the safer default for a category that may
- * contain a security-critical event.
+ * <p>Stores what is <b>enabled</b>, not what is disabled. Categories introduced
+ * after a user configured preferences use the configured email and in-app defaults.
  */
 @Entity
 @Table(name = "notification_preferences")
@@ -76,14 +74,11 @@ public class NotificationPreferenceEntity {
     }
 
     /**
-     * Decodes to a set, defaulting to every channel when nothing is listed.
-     *
-     * <p>The permissive default matters: an empty or unparseable value must not
-     * read as "notify me of nothing".
+     * Decodes to a set, defaulting to configured channels when nothing is listed.
      */
     public EnumSet<NotificationChannel> decode() {
         if (enabledChannels == null || enabledChannels.isBlank()) {
-            return EnumSet.allOf(NotificationChannel.class);
+            return EnumSet.of(NotificationChannel.EMAIL, NotificationChannel.IN_APP);
         }
         EnumSet<NotificationChannel> decoded = EnumSet.noneOf(NotificationChannel.class);
         for (String token : enabledChannels.split(",")) {
@@ -94,7 +89,11 @@ public class NotificationPreferenceEntity {
                 // the in-app default above keeps the record usable.
             }
         }
-        return decoded.isEmpty() ? EnumSet.allOf(NotificationChannel.class) : decoded;
+        if (decoded.isEmpty()) {
+            return EnumSet.of(NotificationChannel.EMAIL, NotificationChannel.IN_APP);
+        }
+        decoded.add(NotificationChannel.IN_APP);
+        return decoded;
     }
 
     public UUID getUserId() { return userId; }

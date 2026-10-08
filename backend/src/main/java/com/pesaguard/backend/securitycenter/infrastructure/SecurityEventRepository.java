@@ -5,6 +5,8 @@ import java.util.Optional;
 import java.util.UUID;
 
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 
 import com.pesaguard.backend.securitycenter.domain.SecurityEvent.Resolution;
 
@@ -19,13 +21,21 @@ public interface SecurityEventRepository extends JpaRepository<SecurityEventEnti
      */
     Optional<SecurityEventEntity> findByIdAndOrganizationId(UUID id, UUID organizationId);
 
-    List<SecurityEventEntity> findByOrganizationIdAndResolutionOrderByDetectedAtDesc(
-            UUID organizationId, Resolution resolution);
+    Page<SecurityEventEntity> findByOrganizationIdAndResolutionOrderByDetectedAtDesc(
+            UUID organizationId, Resolution resolution, Pageable pageable);
 
-    List<SecurityEventEntity> findByOrganizationIdOrderByDetectedAtDesc(UUID organizationId);
+    Page<SecurityEventEntity> findByOrganizationIdOrderByDetectedAtDesc(
+            UUID organizationId, Pageable pageable);
 
     List<SecurityEventEntity> findByOrganizationIdAndTypeOrderByDetectedAtDesc(
             UUID organizationId, com.pesaguard.backend.securitycenter.domain.SecurityEventType type);
 
     long countByOrganizationIdAndResolution(UUID organizationId, Resolution resolution);
+
+    boolean existsByOrganizationIdAndTypeAndSubjectIdAndSubjectKindAndDetectedAtAfter(
+            UUID organizationId,
+            com.pesaguard.backend.securitycenter.domain.SecurityEventType type,
+            UUID subjectId,
+            String subjectKind,
+            java.time.Instant detectedAfter);
 }

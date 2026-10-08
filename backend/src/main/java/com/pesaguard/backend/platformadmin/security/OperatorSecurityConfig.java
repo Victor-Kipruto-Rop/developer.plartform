@@ -3,12 +3,14 @@ package com.pesaguard.backend.platformadmin.security;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.annotation.Order;
+import org.springframework.http.HttpMethod;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 
 import com.pesaguard.backend.platformadmin.domain.OperatorCapability;
+import com.pesaguard.backend.security.servicejwt.PipelineServiceJwksController;
 
 /**
  * The internal operator filter chain.
@@ -69,6 +71,7 @@ public class OperatorSecurityConfig {
                         .sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(authorize -> authorize
                         .requestMatchers(HEALTH_PATH).permitAll()
+                        .requestMatchers(HttpMethod.GET, PipelineServiceJwksController.JWKS_PATH).permitAll()
                         .requestMatchers(OPERATOR_PATH_PREFIX + "/organizations/**")
                         .hasAuthority(authority(OperatorCapability.ORGANIZATIONS_READ))
                         .requestMatchers(OPERATOR_PATH_PREFIX + "/projects/**")
@@ -79,6 +82,16 @@ public class OperatorSecurityConfig {
                         .hasAuthority(authority(OperatorCapability.USAGE_READ))
                         .requestMatchers(OPERATOR_PATH_PREFIX + "/production-access/**")
                         .hasAuthority(authority(OperatorCapability.PRODUCTION_READ))
+                        .requestMatchers(OPERATOR_PATH_PREFIX + "/support/tickets/*/resolve")
+                        .hasAuthority(authority(OperatorCapability.SUPPORT_RESOLVE))
+                        .requestMatchers(OPERATOR_PATH_PREFIX + "/support/tickets/**")
+                        .hasAuthority(authority(OperatorCapability.SUPPORT_READ))
+                        .requestMatchers(HttpMethod.GET, OPERATOR_PATH_PREFIX + "/feedback/**")
+                        .hasAuthority(authority(OperatorCapability.SUPPORT_READ))
+                        .requestMatchers(HttpMethod.POST, OPERATOR_PATH_PREFIX + "/feedback/**")
+                        .hasAuthority(authority(OperatorCapability.SUPPORT_RESOLVE))
+                        .requestMatchers(HttpMethod.PATCH, OPERATOR_PATH_PREFIX + "/feedback/**")
+                        .hasAuthority(authority(OperatorCapability.SUPPORT_RESOLVE))
                         .requestMatchers(OPERATOR_PATH_PREFIX + "/security-events/**")
                         .hasAuthority(authority(OperatorCapability.SECURITY_READ))
                         // Mutation paths are matched before the read path so a
@@ -89,6 +102,22 @@ public class OperatorSecurityConfig {
                         .hasAuthority(authority(OperatorCapability.CREDENTIALS_REVOKE))
                         .requestMatchers(OPERATOR_PATH_PREFIX + "/security-events/*/resolve")
                         .hasAuthority(authority(OperatorCapability.SECURITY_RESOLVE))
+                        .requestMatchers(HttpMethod.POST, OPERATOR_PATH_PREFIX + "/configuration/**")
+                        .hasAuthority(authority(OperatorCapability.PLATFORM_CONFIG_WRITE))
+                        .requestMatchers(HttpMethod.PUT, OPERATOR_PATH_PREFIX + "/configuration/**")
+                        .hasAuthority(authority(OperatorCapability.PLATFORM_CONFIG_WRITE))
+                        .requestMatchers(HttpMethod.PATCH, OPERATOR_PATH_PREFIX + "/configuration/**")
+                        .hasAuthority(authority(OperatorCapability.PLATFORM_CONFIG_WRITE))
+                        .requestMatchers(HttpMethod.POST, OPERATOR_PATH_PREFIX + "/billing/**")
+                        .hasAuthority(authority(OperatorCapability.BILLING_WRITE))
+                        .requestMatchers(HttpMethod.PUT, OPERATOR_PATH_PREFIX + "/billing/**")
+                        .hasAuthority(authority(OperatorCapability.BILLING_WRITE))
+                        .requestMatchers(HttpMethod.PATCH, OPERATOR_PATH_PREFIX + "/billing/**")
+                        .hasAuthority(authority(OperatorCapability.BILLING_WRITE))
+                        .requestMatchers(HttpMethod.DELETE, OPERATOR_PATH_PREFIX + "/billing/**")
+                        .hasAuthority(authority(OperatorCapability.BILLING_WRITE))
+                        .requestMatchers(OPERATOR_PATH_PREFIX + "/billing/**")
+                        .hasAuthority(authority(OperatorCapability.BILLING_READ))
                         .requestMatchers(OPERATOR_PATH_PREFIX + "/configuration/**")
                         .hasAuthority(authority(OperatorCapability.PLATFORM_CONFIG_READ))
                         .requestMatchers(OPERATOR_PATH_PREFIX + "/credentials/**")

@@ -7,6 +7,7 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Component;
 
 import com.pesaguard.backend.security.principals.AuthenticatedUser;
+import com.pesaguard.backend.credentials.api.ApiKeyAuthenticator;
 import com.pesaguard.backend.tenancy.TenantContext;
 import com.pesaguard.backend.tenancy.TenantContextHolder;
 
@@ -64,6 +65,12 @@ public interface RequestAttribution {
 
         @Override
         public Resolved resolve(HttpServletRequest request) {
+            Object keyAttribute = request.getAttribute(
+                    ApiKeyAuthenticator.REQUEST_ATTRIBUTE_AUTHENTICATED_KEY);
+            if (keyAttribute instanceof ApiKeyAuthenticator.AuthenticatedApiKey key) {
+                return new Resolved(key.organizationId(), key.projectId(), key.environmentId(),
+                        key.keyId(), null, null);
+            }
             java.util.Optional<TenantContext> context = TenantContextHolder.current();
             if (context.isPresent()) {
                 TenantContext value = context.get();

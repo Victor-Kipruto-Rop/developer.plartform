@@ -47,7 +47,7 @@ public class AuthorizationService {
 
     @Transactional(readOnly = true)
     public Set<Permission> effectivePermissions(AuthenticatedUser principal) {
-        return membershipRepository.findByOrganizationIdAndUserId(principal.organizationId(), principal.userId())
+        Set<Permission> effective = membershipRepository.findByOrganizationIdAndUserId(principal.organizationId(), principal.userId())
                 .filter(membership -> membership.getStatus() == MembershipStatus.ACTIVE)
                 .map(membership -> {
                     Set<Permission> permissions = EnumSet.noneOf(Permission.class);
@@ -56,6 +56,10 @@ public class AuthorizationService {
                     return permissions;
                 })
                 .orElseGet(() -> EnumSet.noneOf(Permission.class));
+        if (principal.serviceAccount()) {
+            effective.removeIf(permission -> !principal.serviceScopes().contains(permission.value()));
+        }
+        return effective;
     }
 
     @Transactional(readOnly = true)
@@ -83,6 +87,10 @@ public class AuthorizationService {
 
     @Transactional(readOnly = true)
     public OrganizationRole requireActiveMembership(AuthenticatedUser principal) {
+        if (principal.serviceAccount()) {
+            throw new BusinessException(HttpStatus.FORBIDDEN, "PERMISSION_DENIED",
+                    "Service accounts cannot manage organization roles.");
+        }
         return membershipRepository.findByOrganizationIdAndUserId(principal.organizationId(), principal.userId())
                 .filter(membership -> membership.getStatus() == MembershipStatus.ACTIVE)
                 .map(membership -> membership.getRole())

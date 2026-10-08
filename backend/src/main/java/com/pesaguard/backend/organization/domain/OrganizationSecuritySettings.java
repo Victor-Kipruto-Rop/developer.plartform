@@ -42,6 +42,9 @@ public class OrganizationSecuritySettings {
     @Column(name = "mfa_required", nullable = false)
     private boolean mfaRequired;
 
+    @Column(name = "mfa_required_for_admins", nullable = false)
+    private boolean mfaRequiredForAdmins;
+
     @Column(name = "ip_allowlist", nullable = false, columnDefinition = "text")
     private String ipAllowlist;
 
@@ -75,6 +78,7 @@ public class OrganizationSecuritySettings {
         this.credentialMinLength = 12;
         this.credentialMaxLength = 72;
         this.mfaRequired = false;
+        this.mfaRequiredForAdmins = false;
         this.ipAllowlist = "";
         this.securityEventTypes = "LOGIN_FAILURE,MEMBERSHIP_CHANGED,SECURITY_SETTING_CHANGED";
         this.createdAt = now;
@@ -93,6 +97,7 @@ public class OrganizationSecuritySettings {
             int credentialMinLength,
             int credentialMaxLength,
             boolean mfaRequired,
+            boolean mfaRequiredForAdmins,
             String ipAllowlist,
             String securityEventTypes,
             UUID updatedBy,
@@ -104,10 +109,28 @@ public class OrganizationSecuritySettings {
         this.credentialMinLength = credentialMinLength;
         this.credentialMaxLength = credentialMaxLength;
         this.mfaRequired = mfaRequired;
+        this.mfaRequiredForAdmins = mfaRequiredForAdmins;
         this.ipAllowlist = ipAllowlist;
         this.securityEventTypes = securityEventTypes;
         this.updatedBy = updatedBy;
         this.updatedAt = now;
+    }
+
+    public void update(
+            String allowedAuthMethods,
+            int sessionTtlMinutes,
+            int idleTimeoutMinutes,
+            int maxSessions,
+            int credentialMinLength,
+            int credentialMaxLength,
+            boolean mfaRequired,
+            String ipAllowlist,
+            String securityEventTypes,
+            UUID updatedBy,
+            Instant now) {
+        update(allowedAuthMethods, sessionTtlMinutes, idleTimeoutMinutes, maxSessions,
+                credentialMinLength, credentialMaxLength, mfaRequired, false,
+                ipAllowlist, securityEventTypes, updatedBy, now);
     }
 
     public UUID getOrganizationId() { return organizationId; }
@@ -118,6 +141,7 @@ public class OrganizationSecuritySettings {
     public int getCredentialMinLength() { return credentialMinLength; }
     public int getCredentialMaxLength() { return credentialMaxLength; }
     public boolean isMfaRequired() { return mfaRequired; }
+    public boolean isMfaRequiredForAdmins() { return mfaRequiredForAdmins; }
     public String getIpAllowlist() { return ipAllowlist; }
     public String getSecurityEventTypes() { return securityEventTypes; }
     public UUID getUpdatedBy() { return updatedBy; }

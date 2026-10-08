@@ -140,12 +140,18 @@ class EventSubscriptionTest {
     }
 
     @Test
-    void anUnpinnedEnvironmentAcceptsAny() {
-        EventSubscription subscription = EventSubscription.create(organizationId, projectId,
-                null, "endpoint_1", projectCreated(), 1, "all environments", null);
+    void anEnvironmentIsRequiredForEverySubscription() {
+        assertThatThrownBy(() -> EventSubscription.create(organizationId, projectId,
+                null, "endpoint_1", projectCreated(), 1, "missing environment", null))
+                .isInstanceOf(NullPointerException.class)
+                .hasMessageContaining("environmentId");
+    }
 
-        assertThat(subscription.matchesEnvironment(environmentId)).isTrue();
-        assertThat(subscription.matchesEnvironment(null)).isTrue();
+    @Test
+    void aNullEnvironmentNeverMatches() {
+        EventSubscription subscription = subscription(null);
+
+        assertThat(subscription.matchesEnvironment(null)).isFalse();
     }
 
     @Test

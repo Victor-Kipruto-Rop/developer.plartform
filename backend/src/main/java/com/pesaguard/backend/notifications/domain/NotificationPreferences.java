@@ -9,9 +9,8 @@ import java.util.UUID;
 /**
  * One user's notification preferences.
  *
- * <p>Defaults to everything on. A new account that has never expressed a
- * preference must still hear about a revoked key, and an empty preference set
- * meaning "nothing" would be a dangerous default.
+ * <p>Defaults enable configured delivery channels only. A new account that has
+ * never expressed a preference must still hear about a revoked key.
  *
  * <p>Safety is enforced by <em>refusing to store</em> an unsafe preference
  * rather than overriding one at send time. Silently ignoring what a user asked
@@ -30,16 +29,22 @@ public final class NotificationPreferences {
     }
 
     /**
-     * Default preferences: every category, every channel.
-     *
-     * <p>Everything enabled, because a user who has not configured anything
-     * should receive security mail rather than none.
+     * Default preferences enable configured delivery channels only.
      */
     public static NotificationPreferences defaultsFor(UUID userId) {
+        return defaultsFor(userId, EnumSet.of(NotificationChannel.EMAIL, NotificationChannel.IN_APP));
+    }
+
+    public static NotificationPreferences defaultsFor(UUID userId,
+            Set<NotificationChannel> availableChannels) {
+        EnumSet<NotificationChannel> defaults = availableChannels.isEmpty()
+                ? EnumSet.noneOf(NotificationChannel.class)
+                : EnumSet.copyOf(availableChannels);
+        defaults.add(NotificationChannel.IN_APP);
         EnumMap<NotificationCategory, Set<NotificationChannel>> enabled =
                 new EnumMap<>(NotificationCategory.class);
         for (NotificationCategory category : NotificationCategory.values()) {
-            enabled.put(category, EnumSet.allOf(NotificationChannel.class));
+            enabled.put(category, EnumSet.copyOf(defaults));
         }
         return new NotificationPreferences(userId, enabled);
     }
@@ -63,6 +68,13 @@ public final class NotificationPreferences {
      */
     public static NotificationPreferences of(UUID userId,
             Map<NotificationCategory, Set<NotificationChannel>> disabled) {
+        return of(userId, disabled,
+                EnumSet.of(NotificationChannel.EMAIL, NotificationChannel.IN_APP));
+    }
+
+    public static NotificationPreferences of(UUID userId,
+            Map<NotificationCategory, Set<NotificationChannel>> disabled,
+            Set<NotificationChannel> availableChannels) {
         EnumMap<NotificationCategory, Set<NotificationChannel>> off =
                 new EnumMap<>(NotificationCategory.class);
         for (Map.Entry<NotificationCategory, Set<NotificationChannel>> entry
@@ -74,21 +86,29 @@ public final class NotificationPreferences {
                             "In-app notifications cannot be disabled: they are the only "
                                     + "durable record that a notification was raised.");
                 }
-                if (entry.getKey().hasMandatoryEvents()) {
+                if (channel == NotificationChannel.EMAIL && entry.getKey().hasMandatoryEvents()) {
                     throw new UnsafePreferenceException(
                             "Email cannot be disabled for " + entry.getKey()
                                     + " notifications, because that would silence a security-critical "
                                     + "event such as a revoked credential.");
                 }
             }
-            off.put(entry.getKey(), EnumSet.copyOf(entry.getValue()));
+            off.put(entry.getKey(), entry.getValue().isEmpty()
+                    ? EnumSet.noneOf(NotificationChannel.class)
+                    : EnumSet.copyOf(entry.getValue()));
         }
 
         EnumMap<NotificationCategory, Set<NotificationChannel>> enabled =
                 new EnumMap<>(NotificationCategory.class);
+        EnumSet<NotificationChannel> configured = availableChannels.isEmpty()
+                ? EnumSet.noneOf(NotificationChannel.class)
+                : EnumSet.copyOf(availableChannels);
+        configured.add(NotificationChannel.IN_APP);
         for (NotificationCategory category : NotificationCategory.values()) {
-            EnumSet<NotificationChannel> remaining = EnumSet.allOf(NotificationChannel.class);
+            EnumSet<NotificationChannel> remaining = EnumSet.copyOf(configured);
             remaining.removeAll(off.getOrDefault(category, EnumSet.noneOf(NotificationChannel.class)));
+            if (category.hasMandatoryEvents()) remaining.add(NotificationChannel.EMAIL);
+            remaining.add(NotificationChannel.IN_APP);
             enabled.put(category, remaining);
         }
         return new NotificationPreferences(userId, enabled);
@@ -105,7 +125,7 @@ public final class NotificationPreferences {
     public Set<NotificationChannel> channelsFor(NotificationType type) {
         Set<NotificationChannel> configured =
                 channels.getOrDefault(type.category(),
-                        EnumSet.allOf(NotificationChannel.class));
+                        EnumSet.of(NotificationChannel.EMAIL, NotificationChannel.IN_APP));
         if (!type.mandatory()) {
             return EnumSet.copyOf(configured);
         }
@@ -135,17 +155,29 @@ public final class NotificationPreferences {
      */
     public static NotificationPreferences ofEnabled(UUID userId,
             Map<NotificationCategory, Set<NotificationChannel>> enabled) {
+        return ofEnabled(userId, enabled,
+                EnumSet.of(NotificationChannel.EMAIL, NotificationChannel.IN_APP));
+    }
+
+    public static NotificationPreferences ofEnabled(UUID userId,
+            Map<NotificationCategory, Set<NotificationChannel>> enabled,
+            Set<NotificationChannel> availableChannels) {
         EnumMap<NotificationCategory, Set<NotificationChannel>> disabled =
                 new EnumMap<>(NotificationCategory.class);
         for (NotificationCategory category : NotificationCategory.values()) {
             Set<NotificationChannel> on = enabled.get(category);
-            EnumSet<NotificationChannel> off = EnumSet.allOf(NotificationChannel.class);
-            if (on != null) {
+            EnumSet<NotificationChannel> off;
+            if (on == null) {
+                off = EnumSet.allOf(NotificationChannel.class);
+                off.removeAll(availableChannels);
+                off.remove(NotificationChannel.IN_APP);
+            } else {
+                off = EnumSet.allOf(NotificationChannel.class);
                 off.removeAll(on);
             }
             disabled.put(category, off);
         }
-        return of(userId, disabled);
+        return of(userId, disabled, availableChannels);
     }
 
     /** The effective enabled channels per category, for persisting. */
@@ -154,7 +186,9 @@ public final class NotificationPreferences {
                 new EnumMap<>(NotificationCategory.class);
         for (NotificationCategory category : NotificationCategory.values()) {
             result.put(category, EnumSet.copyOf(
-                    channels.getOrDefault(category, EnumSet.allOf(NotificationChannel.class))));
+                    channels.getOrDefault(category,
+                            EnumSet.of(NotificationChannel.EMAIL, NotificationChannel.IN_APP))));
         }
         return result;
-    }}
+    }
+}

@@ -11,8 +11,10 @@ import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.pesaguard.backend.common.api.ApiResponse;
@@ -37,8 +39,10 @@ public class ApiKeyController {
             @AuthenticationPrincipal AuthenticatedUser principal,
             @PathVariable UUID projectId,
             @PathVariable UUID environmentId,
+            @RequestHeader("Idempotency-Key") String idempotencyKey,
             @Valid @RequestBody CreateApiKeyRequest request) {
-        CreatedApiKeyView created = apiKeyService.issue(principal, projectId, environmentId, request, clock.instant());
+        CreatedApiKeyView created = apiKeyService.issue(
+                principal, projectId, environmentId, request, clock.instant(), idempotencyKey);
         return ResponseEntity.status(201)
                 .header(HttpHeaders.CACHE_CONTROL, "no-store")
                 .body(ApiResponse.of(created));
@@ -62,6 +66,32 @@ public class ApiKeyController {
     ApiResponse<ApiKeyView> resume(@AuthenticationPrincipal AuthenticatedUser principal,
             @PathVariable UUID projectId, @PathVariable UUID environmentId, @PathVariable UUID keyId) {
         return ApiResponse.of(apiKeyService.resume(principal, projectId, environmentId, keyId));
+    }
+
+    @PutMapping("/{keyId}/restrictions")
+    ApiResponse<ApiKeyView> updateRestrictions(
+            @AuthenticationPrincipal AuthenticatedUser principal,
+            @PathVariable UUID projectId, @PathVariable UUID environmentId, @PathVariable UUID keyId,
+            @Valid @RequestBody UpdateApiKeyRestrictionsRequest request) {
+        return ApiResponse.of(apiKeyService.updateRestrictions(
+                principal, projectId, environmentId, keyId, request, clock.instant()));
+    }
+
+    @PutMapping("/{keyId}/name")
+    ApiResponse<ApiKeyView> rename(
+            @AuthenticationPrincipal AuthenticatedUser principal,
+            @PathVariable UUID projectId, @PathVariable UUID environmentId, @PathVariable UUID keyId,
+            @Valid @RequestBody RenameApiKeyRequest request) {
+        return ApiResponse.of(apiKeyService.rename(
+                principal, projectId, environmentId, keyId, request, clock.instant()));
+    }
+
+    @PostMapping("/{keyId}/compromise")
+    ApiResponse<ApiKeyView> markCompromised(
+            @AuthenticationPrincipal AuthenticatedUser principal,
+            @PathVariable UUID projectId, @PathVariable UUID environmentId, @PathVariable UUID keyId) {
+        return ApiResponse.of(apiKeyService.markCompromised(
+                principal, projectId, environmentId, keyId, clock.instant()));
     }
 
     @PostMapping("/{keyId}/rotate")

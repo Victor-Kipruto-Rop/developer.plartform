@@ -7,9 +7,11 @@ import java.util.UUID;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.data.domain.PageRequest;
 
 import com.pesaguard.backend.audit.application.AuditService;
 import com.pesaguard.backend.common.api.RequestContext;
+import com.pesaguard.backend.common.api.PageResponse;
 import com.pesaguard.backend.common.exception.BusinessException;
 import com.pesaguard.backend.common.exception.ResourceNotFoundException;
 import com.pesaguard.backend.security.principals.AuthenticatedUser;
@@ -37,15 +39,20 @@ import com.pesaguard.backend.securitycenter.infrastructure.SecurityEventReposito
 @Service
 public class SecurityEventService {
 
+    private static final java.time.Duration DETECTION_DEDUPLICATION_WINDOW =
+            java.time.Duration.ofMinutes(15);
+
     private final SecurityEventRepository repository;
     private final AuditService auditService;
     private final Clock clock;
+    private final SecurityEventNotificationEmitter notifications;
 
     public SecurityEventService(SecurityEventRepository repository, AuditService auditService,
-            Clock clock) {
+            Clock clock, SecurityEventNotificationEmitter notifications) {
         this.repository = repository;
         this.auditService = auditService;
         this.clock = clock;
+        this.notifications = notifications;
     }
 
     /**
@@ -58,9 +65,37 @@ public class SecurityEventService {
     @Transactional
     public SecurityEvent.Record record(UUID organizationId, SecurityEventType type,
             UUID subjectId, String subjectKind, String detail) {
+        return persist(organizationId, type, subjectId, subjectKind, detail);
+    }
+
+    /**
+     * Coalesces repeated detector hits for one subject. Authentication and
+     * authorization still run on every request; only persisted alerts are
+     * bounded so retries cannot create an alert flood.
+     */
+    @Transactional(propagation = org.springframework.transaction.annotation.Propagation.REQUIRES_NEW)
+    public void recordIfNew(UUID organizationId, SecurityEventType type,
+            UUID subjectId, String subjectKind, String detail) {
+        if (organizationId == null || type == null || subjectId == null
+                || subjectKind == null || subjectKind.isBlank()) {
+            return;
+        }
+        Instant now = clock.instant();
+        if (repository.existsByOrganizationIdAndTypeAndSubjectIdAndSubjectKindAndDetectedAtAfter(
+                organizationId, type, subjectId, subjectKind,
+                now.minus(DETECTION_DEDUPLICATION_WINDOW))) {
+            return;
+        }
+        persist(organizationId, type, subjectId, subjectKind, detail);
+    }
+
+    private SecurityEvent.Record persist(UUID organizationId, SecurityEventType type,
+            UUID subjectId, String subjectKind, String detail) {
         SecurityEvent.Record event = SecurityEvent.Record.detected(organizationId, type,
                 subjectId, subjectKind, detail, clock.instant());
-        return toRecord(repository.save(new SecurityEventEntity(event)));
+        SecurityEvent.Record saved = toRecord(repository.save(new SecurityEventEntity(event)));
+        notifications.notify(saved);
+        return saved;
     }
 
     /**
@@ -109,20 +144,29 @@ public class SecurityEventService {
 
     /** Open signals for a tenant, most recent first. */
     @Transactional(readOnly = true)
-    public java.util.List<SecurityEvent.Record> openFor(AuthenticatedUser principal) {
-        return repository.findByOrganizationIdAndResolutionOrderByDetectedAtDesc(
-                principal.organizationId(), SecurityEvent.Resolution.OPEN).stream()
-                .map(SecurityEventService::toRecord)
-                .toList();
+    public PageResponse<SecurityEvent.Record> openFor(AuthenticatedUser principal, int page, int size) {
+        validatePaging(page, size);
+        var results = repository.findByOrganizationIdAndResolutionOrderByDetectedAtDesc(
+                principal.organizationId(), SecurityEvent.Resolution.OPEN, PageRequest.of(page, size));
+        return PageResponse.of(results.getContent().stream().map(SecurityEventService::toRecord).toList(),
+                results.getNumber(), results.getSize(), results.getTotalElements());
     }
 
     /** A tenant's full signal history. */
     @Transactional(readOnly = true)
-    public java.util.List<SecurityEvent.Record> historyFor(AuthenticatedUser principal) {
-        return repository.findByOrganizationIdOrderByDetectedAtDesc(
-                principal.organizationId()).stream()
-                .map(SecurityEventService::toRecord)
-                .toList();
+    public PageResponse<SecurityEvent.Record> historyFor(AuthenticatedUser principal, int page, int size) {
+        validatePaging(page, size);
+        var results = repository.findByOrganizationIdOrderByDetectedAtDesc(
+                principal.organizationId(), PageRequest.of(page, size));
+        return PageResponse.of(results.getContent().stream().map(SecurityEventService::toRecord).toList(),
+                results.getNumber(), results.getSize(), results.getTotalElements());
+    }
+
+    private static void validatePaging(int page, int size) {
+        if (page < 0 || size < 1 || size > 100) {
+            throw new BusinessException(HttpStatus.BAD_REQUEST, "SECURITY_EVENT_PAGE_INVALID",
+                    "Page must be non-negative and size must be between 1 and 100.");
+        }
     }
     private static SecurityEvent.Record toRecord(
             com.pesaguard.backend.securitycenter.infrastructure.SecurityEventEntity entity) {

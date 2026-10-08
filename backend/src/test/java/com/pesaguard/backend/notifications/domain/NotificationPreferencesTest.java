@@ -33,15 +33,16 @@ class NotificationPreferencesTest {
     }
 
     @Test
-    void defaultsEnableEverything() {
-        // A user who has never configured anything must still hear about a
-        // revoked key. An empty default meaning "nothing" would be dangerous.
+    void defaultsEnableOnlyConfiguredChannels() {
         NotificationPreferences preferences = NotificationPreferences.defaultsFor(userId);
 
         for (NotificationChannel channel : NotificationChannel.values()) {
             assertThat(preferences.isEnabled(NotificationType.CREDENTIAL_COMPROMISE, channel))
-                    .isTrue();
-            assertThat(preferences.isEnabled(NotificationType.QUOTA_WARNING, channel)).isTrue();
+                    .isEqualTo(channel == NotificationChannel.EMAIL
+                            || channel == NotificationChannel.IN_APP);
+            assertThat(preferences.isEnabled(NotificationType.QUOTA_WARNING, channel))
+                    .isEqualTo(channel == NotificationChannel.EMAIL
+                            || channel == NotificationChannel.IN_APP);
         }
     }
 
@@ -129,5 +130,17 @@ class NotificationPreferencesTest {
         assertThat(enabled.get(NotificationCategory.SECURITY))
                 .containsExactlyInAnyOrder(NotificationChannel.EMAIL,
                         NotificationChannel.IN_APP);
+    }
+
+    @Test
+    void emptyDisabledChannelSetKeepsEveryChannelEnabled() {
+        EnumMap<NotificationCategory, Set<NotificationChannel>> disabled =
+                new EnumMap<>(NotificationCategory.class);
+        disabled.put(NotificationCategory.USAGE, Set.of());
+
+        NotificationPreferences preferences = NotificationPreferences.of(userId, disabled);
+
+        assertThat(preferences.enabledByCategory().get(NotificationCategory.USAGE))
+                .containsExactlyInAnyOrder(NotificationChannel.EMAIL, NotificationChannel.IN_APP);
     }
 }

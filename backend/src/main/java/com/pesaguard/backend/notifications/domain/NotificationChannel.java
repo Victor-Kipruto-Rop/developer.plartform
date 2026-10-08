@@ -9,7 +9,19 @@ public enum NotificationChannel {
     EMAIL,
 
     /** Stored for the portal to display. Always available. */
-    IN_APP;
+    IN_APP,
+
+    /** Requires a configured Web Push provider and user subscription. */
+    BROWSER_PUSH,
+
+    /** Reserved for mobile push provider integration. */
+    MOBILE_PUSH,
+
+    /** Requires an explicitly configured SMS provider and verified number. */
+    SMS,
+
+    /** Uses an explicitly configured notification webhook destination. */
+    WEBHOOK;
 
     /**
      * Whether this channel can be switched off.
@@ -19,5 +31,9 @@ public enum NotificationChannel {
      */
     public boolean isMandatory() {
         return this == IN_APP;
+    }
+
+    public boolean isAvailableWithoutProvider() {
+        return this == IN_APP || this == EMAIL;
     }
 }

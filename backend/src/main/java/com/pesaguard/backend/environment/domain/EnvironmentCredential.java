@@ -16,11 +16,10 @@ import jakarta.persistence.Table;
 /**
  * A secret belonging to exactly one environment tier.
  *
- * <p>Only the HMAC hash and a non-reversible fingerprint are persisted. The
- * platform deliberately cannot return the secret value: no runtime consumer
- * exists yet, and storing a reversible copy without a provisioned encryption key
- * would weaken the guarantee that credentials are never readable from the
- * database. Rotating creates a new version rather than overwriting history.
+ * <p>The HMAC hash and keyed fingerprint support comparison without disclosing
+ * the secret. The value is also stored as authenticated ciphertext for future
+ * internal runtime consumers; developer APIs expose metadata only. Rotating
+ * creates a new version rather than overwriting history.
  */
 @Entity
 @Table(name = "environment_credentials")
@@ -47,6 +46,9 @@ public class EnvironmentCredential {
 
     @Column(name = "secret_hash", nullable = false, length = 64)
     private String secretHash;
+
+    @Column(name = "encrypted_secret", columnDefinition = "text")
+    private String encryptedSecret;
 
     @Column(name = "fingerprint", nullable = false, length = 64)
     private String fingerprint;
@@ -76,7 +78,7 @@ public class EnvironmentCredential {
     }
 
     private EnvironmentCredential(UUID organizationId, UUID projectId, UUID environmentId, String name,
-            EnvironmentCredentialType credentialType, String secretHash, String fingerprint,
+            EnvironmentCredentialType credentialType, String secretHash, String encryptedSecret, String fingerprint,
             int version, UUID createdBy) {
         this.id = UUID.randomUUID();
         this.organizationId = organizationId;
@@ -85,6 +87,7 @@ public class EnvironmentCredential {
         this.name = name;
         this.credentialType = credentialType;
         this.secretHash = secretHash;
+        this.encryptedSecret = encryptedSecret;
         this.fingerprint = fingerprint;
         this.version = version;
         this.createdBy = createdBy;
@@ -92,10 +95,10 @@ public class EnvironmentCredential {
     }
 
     public static EnvironmentCredential create(UUID organizationId, UUID projectId, UUID environmentId,
-            String name, EnvironmentCredentialType credentialType, String secretHash, String fingerprint,
+            String name, EnvironmentCredentialType credentialType, String secretHash, String encryptedSecret, String fingerprint,
             int version, UUID createdBy) {
         return new EnvironmentCredential(organizationId, projectId, environmentId, name,
-                credentialType, secretHash, fingerprint, version, createdBy);
+                credentialType, secretHash, encryptedSecret, fingerprint, version, createdBy);
     }
 
     public void revoke(Instant now) {

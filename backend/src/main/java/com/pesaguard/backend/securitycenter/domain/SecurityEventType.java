@@ -65,6 +65,16 @@ public enum SecurityEventType {
     SUSPICIOUS_WEBHOOK_ACTIVITY,
 
     /**
+     * A successful sign-in from a device family the account has not used before.
+     *
+     * <p>Roughly as common as it sounds innocent: a new phone, a new browser, a
+     * work laptop after a home one. It is worth surfacing because it is also the
+     * ordinary shape of a stolen password, and it is the one signal available
+     * without the platform having any prior knowledge of the person.
+     */
+    UNFAMILIAR_DEVICE_SIGNIN,
+
+    /**
      * A credential attempted scopes it has not been granted.
      *
      * <p>Frequently benign: scopes get added to an integration over time. Worth
@@ -88,7 +98,7 @@ public enum SecurityEventType {
      */
     public boolean isCommonlyBenign() {
         return this == SCOPE_ABUSE || this == REPEATED_FAILURES
-                || this == ALLOWLIST_VIOLATION;
+                || this == ALLOWLIST_VIOLATION || this == UNFAMILIAR_DEVICE_SIGNIN;
     }
 
     /**

@@ -43,6 +43,42 @@ public class AuditQueryService {
     }
 
     @Transactional(readOnly = true)
+    public String exportCsv(AuthenticatedUser principal, int limit) {
+        authorizationService.requirePermission(principal, Permission.AUDIT_READ);
+        if (limit < 1 || limit > 10_000) {
+            throw new com.pesaguard.backend.common.exception.BusinessException(
+                    org.springframework.http.HttpStatus.BAD_REQUEST, "AUDIT_EXPORT_LIMIT_INVALID",
+                    "Export limit must be between 1 and 10000 records.");
+        }
+        var events = repository.findByOrganizationIdOrderBySequenceNumberDesc(
+                principal.organizationId(), PageRequest.of(0, limit)).getContent();
+        StringBuilder csv = new StringBuilder(
+                "sequence,action,resource_type,resource_id,actor_user_id,request_id,created_at\r\n");
+        for (AuditEvent event : events) {
+            csv.append(event.getSequenceNumber()).append(',')
+                    .append(csvCell(event.getAction())).append(',')
+                    .append(csvCell(event.getResourceType())).append(',')
+                    .append(csvCell(event.getResourceId())).append(',')
+                    .append(csvCell(event.getActorUserId().toString())).append(',')
+                    .append(csvCell(event.getRequestId() == null ? "" : event.getRequestId().toString())).append(',')
+                    .append(csvCell(event.getCreatedAt().toString())).append("\r\n");
+        }
+        return csv.toString();
+    }
+
+    private static String csvCell(String value) {
+        String safe = value == null ? "" : value;
+        int first = 0;
+        while (first < safe.length() && Character.isWhitespace(safe.charAt(first))) {
+            first++;
+        }
+        if (first < safe.length() && "=+-@".indexOf(safe.charAt(first)) >= 0) {
+            safe = "'" + safe;
+        }
+        return "\"" + safe.replace("\"", "\"\"") + "\"";
+    }
+
+    @Transactional(readOnly = true)
     public boolean verifyChain(AuthenticatedUser principal) {
         authorizationService.requirePermission(principal, Permission.AUDIT_READ);
         List<AuditEvent> events = repository.findByOrganizationIdOrderBySequenceNumberAsc(principal.organizationId());

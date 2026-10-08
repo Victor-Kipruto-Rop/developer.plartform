@@ -2,6 +2,7 @@ package com.pesaguard.backend;
 
 import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.hasSize;
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
@@ -16,18 +17,25 @@ import java.util.Base64;
 import java.util.UUID;
 
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.http.MediaType;
+import org.springframework.mail.SimpleMailMessage;
+import org.springframework.mail.javamail.JavaMailSender;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.postgresql.PostgreSQLContainer;
+
+import com.pesaguard.backend.organization.application.InvitationEmailDeliveryScheduler;
 
 @Testcontainers(disabledWithoutDocker = true)
 @SpringBootTest
@@ -50,10 +58,128 @@ class DeveloperPlatformIntegrationTest {
         registry.add("pesaguard.security.audit-hmac-key", () -> AUDIT_KEY);
         registry.add("pesaguard.security.allowed-origins", () -> "https://developers.pesaguard.victorkipruto.com");
         registry.add("pesaguard.security.registration-enabled", () -> "true");
+        registry.add("pesaguard.organization.invitation-email-dispatch-ms", () -> "3600000");
     }
+
+    @Test
+    void anUnconfirmedAddressCannotSignIn() throws Exception {
+        String email = uniqueEmail();
+        registerUnverified(email);
+
+        // Sign-in is refused until the address is proven. The response must name
+        // the reason so the portal can offer resend rather than showing a generic failure.
+        mockMvc.perform(post("/api/v1/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"email\":\"" + email + "\",\"password\":\"correct horse battery staple\"}"))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.error.code").value("EMAIL_NOT_VERIFIED"));
+
+        confirmEmail(email);
+
+        mockMvc.perform(post("/api/v1/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"email\":\"" + email + "\",\"password\":\"correct horse battery staple\"}"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.error.code").value("LOGIN_EMAIL_MFA_REQUIRED"));
+    }
+
+    @Test
+    void registrationAcceptsAndPersistsUsernameAndPhoneNumber() throws Exception {
+        String email = uniqueEmail();
+        String username = "developer" + UUID.randomUUID().toString().substring(0, 8).replaceAll("[0-9]", "a");
+        String password = "Ripple!Cedar-" + UUID.randomUUID();
+        String phoneNumber = "+254712345678";
+
+        mockMvc.perform(post("/api/v1/auth/register")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"email\":\"" + email + "\",\"password\":\"" + password + "\","
+                                + "\"displayName\":\"Test User\",\"termsAccepted\":true,"
+                                + "\"username\":\"" + username + "\",\"phoneNumber\":\"" + phoneNumber + "\"}"))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.data.username").value(username));
+
+        assertThat(jdbcTemplate.queryForObject(
+                "select phone_number from users where email = ?", String.class, email))
+                .isEqualTo(phoneNumber);
+    }
+
+    @Test
+    void emailVerificationAfterUnverifiedLoginCompletesInitialSession() throws Exception {
+        String email = uniqueEmail();
+        registerUnverified(email);
+
+        mockMvc.perform(post("/api/v1/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"email\":\"" + email + "\",\"password\":\"correct horse battery staple\"}"))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.error.code").value("EMAIL_NOT_VERIFIED"));
+
+        String code = latestEmailCode(email, "code is:");
+        String response = mockMvc.perform(post("/api/v1/auth/verify-email/complete-registration")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"email\":\"" + email + "\",\"code\":\"" + code
+                                + "\",\"password\":\"correct horse battery staple\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.accessToken").isNotEmpty())
+                .andExpect(jsonPath("$.data.refreshToken").isNotEmpty())
+                .andReturn().getResponse().getContentAsString();
+
+        mockMvc.perform(get("/api/v1/auth/session")
+                        .header("Authorization", "Bearer " + jsonValue(response, "accessToken")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.user.email").value(email));
+    }
+
+    @Test
+    void registrationVerificationCompletesInitialSessionButLaterSignInsStillRequireMfa() throws Exception {
+        String email = uniqueEmail();
+        registerUnverified(email);
+        String code = latestEmailCode(email, "code is:");
+
+        String response = mockMvc.perform(post("/api/v1/auth/verify-email/complete-registration")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"email\":\"" + email + "\",\"code\":\"" + code
+                                + "\",\"password\":\"correct horse battery staple\"}"))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Cache-Control", "no-store"))
+                .andExpect(jsonPath("$.data.accessToken").isNotEmpty())
+                .andExpect(jsonPath("$.data.refreshToken").isNotEmpty())
+                .andReturn().getResponse().getContentAsString();
+        String accessToken = jsonValue(response, "accessToken");
+
+        mockMvc.perform(get("/api/v1/auth/session")
+                        .header("Authorization", "Bearer " + accessToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.user.email").value(email));
+
+        mockMvc.perform(post("/api/v1/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"email\":\"" + email + "\",\"password\":\"correct horse battery staple\"}"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.error.code").value("LOGIN_EMAIL_MFA_REQUIRED"));
+    }
+
 
     @Autowired
     MockMvc mockMvc;
+
+    @Autowired
+    JdbcTemplate jdbcTemplate;
+
+    @Autowired
+    InvitationEmailDeliveryScheduler invitationEmailDeliveryScheduler;
+
+    /**
+     * Captured rather than sent.
+     *
+     * <p>Sign-in now requires a confirmed address, so most of these tests need a
+     * verified account. The token only exists in the email body, and the database
+     * keeps a one-way hash of it, so the message has to be intercepted to complete
+     * the flow. Replaces the sender rather than the service: the verification
+     * endpoint under test is still the real one, driven by a real token.
+     */
+    @MockitoBean
+    JavaMailSender mailSender;
 
     @Test
     void registrationCreatesTenantScopedResourcesAndOneTimeApiKey() throws Exception {
@@ -62,16 +188,30 @@ class DeveloperPlatformIntegrationTest {
         String projectId = createProject(token);
         String environmentId = createEnvironment(token, projectId);
 
+        String idempotencyKey = "integration-" + UUID.randomUUID();
         String keyResponse = mockMvc.perform(post(
                         "/api/v1/projects/{projectId}/environments/{environmentId}/api-keys", projectId, environmentId)
                         .header("Authorization", "Bearer " + token)
+                        .header("Idempotency-Key", idempotencyKey)
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"name\":\"local-worker\",\"scopes\":[\"projects:read\",\"environments:read\"],\"expiresIn\":\"PT24H\"}"))
+                        .content("{\"name\":\"local-worker\",\"scopes\":[\"developer:read\"],\"expiresIn\":\"PT24H\"}"))
                 .andExpect(status().isCreated())
                 .andExpect(header().string("Cache-Control", "no-store"))
                 .andExpect(jsonPath("$.data.key", containsString("pgk_")))
+                .andExpect(jsonPath("$.data.baseUrl").value(
+                        "https://sandbox-api.pesaguard.victorkipruto.com"))
                 .andReturn().getResponse().getContentAsString();
         String keyId = jsonValue(keyResponse, "id");
+
+        mockMvc.perform(post(
+                        "/api/v1/projects/{projectId}/environments/{environmentId}/api-keys", projectId, environmentId)
+                        .header("Authorization", "Bearer " + token)
+                        .header("Idempotency-Key", idempotencyKey)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"name\":\"local-worker\",\"scopes\":[\"developer:read\"],\"expiresIn\":\"PT24H\"}"))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.data.baseUrl").value(
+                        "https://sandbox-api.pesaguard.victorkipruto.com"));
 
         mockMvc.perform(get("/api/v1/projects/{projectId}/environments/{environmentId}/api-keys", projectId, environmentId)
                         .header("Authorization", "Bearer " + token))
@@ -86,6 +226,40 @@ class DeveloperPlatformIntegrationTest {
         mockMvc.perform(get("/api/v1/audit-events/verify").header("Authorization", "Bearer " + token))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.valid").value(true));
+    }
+
+    @Test
+    void registrationCreatesMyWorkspaceAndUsernameSupportsSignInAndUpdates() throws Exception {
+        String email = uniqueEmail();
+        registerUnverified(email);
+
+        String username = jdbcTemplate.queryForObject(
+                "select username from users where email = ?", String.class, email);
+        String workspaceName = jdbcTemplate.queryForObject(
+                "select name from organizations where owner_user_id = (select id from users where email = ?)",
+                String.class, email);
+        assertThat(username).isNotBlank();
+        assertThat(workspaceName).isEqualTo("My Workspace");
+
+        confirmEmail(email);
+        String token = login(username);
+        mockMvc.perform(get("/api/v1/auth/username").header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.username").value(username));
+
+        String updatedUsername = "newdeveloper"
+                + UUID.randomUUID().toString().substring(0, 8).replaceAll("[0-9]", "a");
+        mockMvc.perform(patch("/api/v1/auth/username")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"username\":\"" + updatedUsername + "\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.username").value(updatedUsername));
+        mockMvc.perform(post("/api/v1/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"email\":\"" + updatedUsername
+                                + "\",\"password\":\"correct horse battery staple\"}"))
+                .andExpect(status().isOk());
     }
 
     @Test
@@ -153,18 +327,26 @@ class DeveloperPlatformIntegrationTest {
 
         mockMvc.perform(post("/api/v1/organization/invitations")
                         .header("Authorization", "Bearer " + ownerToken)
+                        .header("Idempotency-Key", "duplicate-test-" + UUID.randomUUID())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"email\":\"" + inviteeEmail + "\",\"role\":\"DEVELOPER\"}"))
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.error.code").value("INVITATION_ALREADY_PENDING"));
 
+        mockMvc.perform(get("/api/v1/invitations/{token}/preview", invitationToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("PENDING"))
+                .andExpect(jsonPath("$.data.invitedEmailHint").value(containsString("@example.com")));
+
         String issuedToken = acceptInvitation(invitationToken, inviteeEmail);
 
-        mockMvc.perform(post("/api/v1/organization/invitations/accept")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(acceptBody(invitationToken, inviteeEmail)))
+        mockMvc.perform(post("/api/v1/invitations/{token}/accept", invitationToken))
                 .andExpect(status().isUnauthorized())
-                .andExpect(jsonPath("$.error.code").value("INVALID_INVITATION"));
+                .andExpect(jsonPath("$.error.code").value("UNAUTHENTICATED"));
+        mockMvc.perform(post("/api/v1/invitations/{token}/accept", invitationToken)
+                        .header("Authorization", "Bearer " + issuedToken))
+                .andExpect(status().isGone())
+                .andExpect(jsonPath("$.error.code").value("INVITATION_NOT_ACTIVE"));
 
         mockMvc.perform(get("/api/v1/organization/members").header("Authorization", "Bearer " + ownerToken))
                 .andExpect(status().isOk())
@@ -174,6 +356,109 @@ class DeveloperPlatformIntegrationTest {
                 .andExpect(jsonPath("$.data", hasSize(2)));
         mockMvc.perform(get("/api/v1/organization/security-settings").header("Authorization", "Bearer " + issuedToken))
                 .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void invitationAcceptanceAndDeclineRequireTheVerifiedInvitedIdentity() throws Exception {
+        String ownerToken = register(uniqueEmail());
+        String invitedEmail = uniqueEmail();
+        String invitationToken = createInvitation(ownerToken, invitedEmail);
+        String otherAccountToken = register(uniqueEmail());
+
+        mockMvc.perform(post("/api/v1/invitations/{token}/accept", invitationToken)
+                        .header("Authorization", "Bearer " + otherAccountToken))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.error.code").value("INVITATION_EMAIL_MISMATCH"));
+        mockMvc.perform(post("/api/v1/invitations/{token}/decline", invitationToken)
+                        .header("Authorization", "Bearer " + otherAccountToken))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.error.code").value("INVITATION_EMAIL_MISMATCH"));
+
+        String invitedAccountToken = register(invitedEmail);
+        mockMvc.perform(post("/api/v1/invitations/{token}/decline", invitationToken)
+                        .header("Authorization", "Bearer " + invitedAccountToken))
+                .andExpect(status().isNoContent());
+        mockMvc.perform(get("/api/v1/organization/invitations")
+                        .header("Authorization", "Bearer " + ownerToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data[0].status").value("DECLINED"))
+                .andExpect(jsonPath("$.data[0].declinedAt").isNotEmpty());
+    }
+
+    @Test
+    void invitationCreationIsIdempotentAndRejectsKeyReuseForDifferentInput() throws Exception {
+        String ownerToken = register(uniqueEmail());
+        String invitedEmail = uniqueEmail();
+        String key = "invite-idempotency-" + UUID.randomUUID();
+
+        String firstResponse = mockMvc.perform(post("/api/v1/organization/invitations")
+                        .header("Authorization", "Bearer " + ownerToken)
+                        .header("Idempotency-Key", key)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"email\":\"" + invitedEmail + "\",\"role\":\"DEVELOPER\"}"))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.data.token").doesNotExist())
+                .andReturn().getResponse().getContentAsString();
+        String replayResponse = mockMvc.perform(post("/api/v1/organization/invitations")
+                        .header("Authorization", "Bearer " + ownerToken)
+                        .header("Idempotency-Key", key)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"email\":\"" + invitedEmail + "\",\"role\":\"DEVELOPER\"}"))
+                .andExpect(status().isCreated())
+                .andReturn().getResponse().getContentAsString();
+        assertThat(jsonValue(firstResponse, "id")).isEqualTo(jsonValue(replayResponse, "id"));
+        assertThat(jdbcTemplate.queryForObject(
+                "select count(*) from organization_invitation_email_deliveries where recipient_email = ?",
+                Integer.class, invitedEmail)).isEqualTo(1);
+
+        mockMvc.perform(post("/api/v1/organization/invitations")
+                        .header("Authorization", "Bearer " + ownerToken)
+                        .header("Idempotency-Key", key)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"email\":\"" + uniqueEmail() + "\",\"role\":\"VIEWER\"}"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.error.code").value("IDEMPOTENCY_KEY_REUSED"));
+    }
+
+    @Test
+    void organizationScopedInvitationRoutesSupportDetailAndCancellation() throws Exception {
+        String ownerToken = register(uniqueEmail());
+        String organizationId = organizationId(ownerToken);
+        String invitedEmail = uniqueEmail();
+        String invitationId = jsonValue(mockMvc.perform(post(
+                        "/api/v1/organizations/{organizationId}/invitations", organizationId)
+                        .header("Authorization", "Bearer " + ownerToken)
+                        .header("Idempotency-Key", "scoped-invite-" + UUID.randomUUID())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"email\":\"" + invitedEmail + "\",\"role\":\"DEVELOPER\"}"))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.data.token").doesNotExist())
+                .andReturn().getResponse().getContentAsString(), "id");
+
+        mockMvc.perform(get("/api/v1/organizations/{organizationId}/invitations", organizationId)
+                        .header("Authorization", "Bearer " + ownerToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data[0].id").value(invitationId));
+        mockMvc.perform(get("/api/v1/organizations/{organizationId}/invitations/{invitationId}",
+                        organizationId, invitationId)
+                        .header("Authorization", "Bearer " + ownerToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.email").value(invitedEmail));
+
+        mockMvc.perform(post("/api/v1/organizations/{organizationId}/invitations/{invitationId}/cancel",
+                        organizationId, invitationId)
+                        .header("Authorization", "Bearer " + ownerToken))
+                .andExpect(status().isNoContent());
+        mockMvc.perform(get("/api/v1/organizations/{organizationId}/invitations/{invitationId}",
+                        organizationId, invitationId)
+                        .header("Authorization", "Bearer " + ownerToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("CANCELLED"))
+                .andExpect(jsonPath("$.data.cancelledAt").isNotEmpty());
+        mockMvc.perform(get("/api/v1/organizations/{organizationId}/invitations",
+                        UUID.randomUUID())
+                        .header("Authorization", "Bearer " + ownerToken))
+                .andExpect(status().isNotFound());
     }
 
     @Test
@@ -196,7 +481,11 @@ class DeveloperPlatformIntegrationTest {
                         .header("Authorization", "Bearer " + ownerToken))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data", hasSize(2)))
-                .andExpect(jsonPath("$.data[1].toStatus").value("SUSPENDED"));
+                // Newest first (createdAt desc), so the suspension is index 0 and the
+                // original acceptance is index 1.
+                .andExpect(jsonPath("$.data[0].toStatus").value("SUSPENDED"))
+                .andExpect(jsonPath("$.data[0].fromStatus").value("ACTIVE"))
+                .andExpect(jsonPath("$.data[0].reason").value("policy review"));
 
         mockMvc.perform(post("/api/v1/auth/login")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -205,7 +494,7 @@ class DeveloperPlatformIntegrationTest {
     }
 
     @Test
-    void multiOrganizationAccountsMustSelectAnOrganizationAtLogin() throws Exception {
+    void multiOrganizationAccountsUseLastWorkspaceByDefaultAndAcceptExplicitSelection() throws Exception {
         String email = uniqueEmail();
         String token = register(email);
         String firstOrganizationId = organizationId(token);
@@ -219,22 +508,22 @@ class DeveloperPlatformIntegrationTest {
         mockMvc.perform(post("/api/v1/auth/login")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"email\":\"" + email + "\",\"password\":\"correct horse battery staple\"}"))
-                .andExpect(status().isConflict())
-                .andExpect(jsonPath("$.error.code").value("ORGANIZATION_SELECTION_REQUIRED"));
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.error.code").value("LOGIN_EMAIL_MFA_REQUIRED"));
 
         mockMvc.perform(post("/api/v1/auth/login")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"email\":\"" + email + "\",\"password\":\"correct horse battery staple\","
                                 + "\"organizationId\":\"" + secondOrganizationId + "\"}"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.organization.id").value(secondOrganizationId));
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.error.code").value("LOGIN_EMAIL_MFA_REQUIRED"));
 
         mockMvc.perform(post("/api/v1/auth/login")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"email\":\"" + email + "\",\"password\":\"correct horse battery staple\","
                                 + "\"organizationId\":\"" + firstOrganizationId + "\"}"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.organization.id").value(firstOrganizationId));
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.error.code").value("LOGIN_EMAIL_MFA_REQUIRED"));
     }
 
     @Test
@@ -310,16 +599,80 @@ class DeveloperPlatformIntegrationTest {
                 .andExpect(header().exists("Retry-After"));
     }
 
+    /** Registers, confirms the address, then signs in. Returns a usable token. */
     private String register(String email) throws Exception {
+        registerUnverified(email);
+        confirmEmail(email);
+        return login(email);
+    }
+
+    /**
+     * Registration returns no session.
+     *
+     * <p>The response reports the pending verification window, but never returns
+     * the emailed OTP or an access token. Tests extract the one-time code from the
+     * captured email to exercise the same public verification endpoint as a user.
+     */
+    private String registerUnverified(String email) throws Exception {
         String organization = "Acme " + email.substring(0, email.indexOf('@'));
         String response = mockMvc.perform(post("/api/v1/auth/register")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"email\":\"" + email + "\",\"password\":\"correct horse battery staple\","
-                                + "\"displayName\":\"Test User\",\"organizationName\":\"" + organization + "\"}"))
+                                + "\"displayName\":\"Test User\",\"organizationName\":\"" + organization + "\","
+                                + "\"termsAccepted\":true}"))
                 .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.data.email").value(email))
+                .andExpect(jsonPath("$.data.username").isNotEmpty())
+                .andExpect(jsonPath("$.data.verificationRequired").value(true))
+                .andReturn().getResponse().getContentAsString();
+        return jsonValue(response, "email");
+    }
+
+    private String login(String email) throws Exception {
+        String challengeResponse = mockMvc.perform(post("/api/v1/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"email\":\"" + email + "\",\"password\":\"correct horse battery staple\"}"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.error.code").value("LOGIN_EMAIL_MFA_REQUIRED"))
+                .andReturn().getResponse().getContentAsString();
+        String challengeId = jsonValue(challengeResponse, "loginChallengeId");
+        String code = latestEmailCode(email, "sign-in verification code is:");
+        String response = mockMvc.perform(post("/api/v1/auth/login/email-mfa/verify")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"challengeId\":\"" + challengeId + "\",\"code\":\"" + code + "\"}"))
+                .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.accessToken").exists())
                 .andReturn().getResponse().getContentAsString();
         return jsonValue(response, "accessToken");
+    }
+
+    /** Completes the real verification flow using the OTP from the captured email. */
+    private void confirmEmail(String email) throws Exception {
+        String code = latestEmailCode(email, "code is:");
+
+        mockMvc.perform(post("/api/v1/auth/verify-email")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"email\":\"" + email + "\",\"code\":\"" + code + "\"}"))
+                .andExpect(status().isOk());
+    }
+
+    private String latestEmailCode(String email, String codeLabel) {
+        ArgumentCaptor<SimpleMailMessage> sent = ArgumentCaptor.forClass(SimpleMailMessage.class);
+        org.mockito.Mockito.verify(mailSender, org.mockito.Mockito.atLeastOnce()).send(sent.capture());
+
+        return sent.getAllValues().stream()
+                .filter(message -> message.getTo() != null
+                        && java.util.Arrays.asList(message.getTo()).contains(email))
+                .map(SimpleMailMessage::getText)
+                .filter(text -> text.contains(codeLabel))
+                .map(text -> {
+                    java.util.regex.Matcher matcher = java.util.regex.Pattern
+                            .compile(java.util.regex.Pattern.quote(codeLabel) + " ([0-9]{6})").matcher(text);
+                    if (!matcher.find()) throw new AssertionError("Email did not contain a six-digit code");
+                    return matcher.group(1);
+                })
+                .reduce((first, second) -> second)
+                .orElseThrow(() -> new AssertionError("No matching verification email was sent to " + email));
     }
 
     private String createProject(String token) throws Exception {
@@ -339,28 +692,64 @@ class DeveloperPlatformIntegrationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"name\":\"sandbox\",\"type\":\"SANDBOX\"}"))
                 .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.baseUrl").value(
+                        "https://sandbox-api.pesaguard.victorkipruto.com"))
                 .andReturn().getResponse().getContentAsString();
         return jsonValue(response, "id");
     }
 
     private String createInvitation(String ownerToken, String inviteeEmail) throws Exception {
-        String response = mockMvc.perform(post("/api/v1/organization/invitations")
+        mockMvc.perform(post("/api/v1/organization/invitations")
                         .header("Authorization", "Bearer " + ownerToken)
+                        .header("Idempotency-Key", "invite-create-" + UUID.randomUUID())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"email\":\"" + inviteeEmail + "\",\"role\":\"DEVELOPER\"}"))
                 .andExpect(status().isCreated())
                 .andExpect(header().string("Cache-Control", "no-store"))
-                .andReturn().getResponse().getContentAsString();
-        return jsonValue(response, "token");
+                .andExpect(jsonPath("$.data.token").doesNotExist())
+                .andExpect(jsonPath("$.data.deliveryStatus").value("QUEUED"));
+        invitationEmailDeliveryScheduler.deliverDue();
+        assertThat(jdbcTemplate.queryForObject(
+                "select count(*) from organization_invitation_email_deliveries "
+                        + "where recipient_email = ? and status = 'SENT' and token_ciphertext is null",
+                Integer.class, inviteeEmail)).isEqualTo(1);
+        return invitationTokenFromEmail(inviteeEmail);
     }
 
     private String acceptInvitation(String invitationToken, String inviteeEmail) throws Exception {
-        String response = mockMvc.perform(post("/api/v1/organization/invitations/accept")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(acceptBody(invitationToken, inviteeEmail)))
-                .andExpect(status().isCreated())
+        String inviteeToken = register(inviteeEmail);
+        String response = mockMvc.perform(post("/api/v1/invitations/{token}/accept", invitationToken)
+                        .header("Authorization", "Bearer " + inviteeToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.organizationId").isNotEmpty())
                 .andReturn().getResponse().getContentAsString();
-        return jsonValue(response, "accessToken");
+        String organizationId = jsonValue(response, "organizationId");
+        String switchedSession = mockMvc.perform(post("/api/v1/auth/switch-workspace")
+                        .header("Authorization", "Bearer " + inviteeToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"workspaceId\":\"" + organizationId + "\"}"))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+        return jsonValue(switchedSession, "accessToken");
+    }
+
+    private String invitationTokenFromEmail(String email) {
+        ArgumentCaptor<SimpleMailMessage> sent = ArgumentCaptor.forClass(SimpleMailMessage.class);
+        org.mockito.Mockito.verify(mailSender, org.mockito.Mockito.atLeastOnce()).send(sent.capture());
+        return sent.getAllValues().stream()
+                .filter(message -> message.getTo() != null
+                        && java.util.Arrays.asList(message.getTo()).contains(email))
+                .map(SimpleMailMessage::getText)
+                .filter(text -> text.contains("/accept-invitation?token="))
+                .map(text -> {
+                    java.util.regex.Matcher matcher = java.util.regex.Pattern
+                            .compile("/accept-invitation\\?token=([A-Za-z0-9_-]+)")
+                            .matcher(text);
+                    if (!matcher.find()) throw new AssertionError("Invitation email did not contain its private token link");
+                    return matcher.group(1);
+                })
+                .reduce((first, second) -> second)
+                .orElseThrow(() -> new AssertionError("No invitation email was sent to " + email));
     }
 
     private String developerMembershipId(String ownerToken) throws Exception {
@@ -383,11 +772,6 @@ class DeveloperPlatformIntegrationTest {
                 .andExpect(status().isOk())
                 .andReturn().getResponse().getContentAsString();
         return jsonValue(response, "organizationId");
-    }
-
-    private static String acceptBody(String invitationToken, String inviteeEmail) {
-        return "{\"token\":\"" + invitationToken + "\",\"email\":\"" + inviteeEmail
-                + "\",\"password\":\"correct horse battery staple\",\"displayName\":\"Invited User\"}";
     }
 
     private static String uniqueEmail() {

@@ -71,13 +71,13 @@ class OrganizationSecuritySettingsServiceTest {
     }
 
     @Test
-    void mfaRequirementIsRejectedUntilAProviderExists() {
+    void mfaRequirementIsAcceptedForTheNextSignIn() {
         OrganizationSecuritySettings settings = settings();
         settings.update("PASSWORD", 480, 120, 10, 12, 72, true, "", "LOGIN_FAILURE", null, NOW);
 
-        assertThatThrownBy(() -> service.assertPasswordLoginAllowed(settings))
-                .isInstanceOf(BusinessException.class)
-                .hasMessageContaining("Multi-factor authentication is required");
+        assertThatCode(() -> service.assertPasswordLoginAllowed(settings)).doesNotThrowAnyException();
+        assertThat(service.requiresMfa(settings, com.pesaguard.backend.organization.domain.OrganizationRole.DEVELOPER))
+                .isTrue();
     }
 
     @Test
@@ -112,12 +112,37 @@ class OrganizationSecuritySettingsServiceTest {
     }
 
     @Test
-    void updateRejectsEnablingMfa() {
+    void updateAllowsEnablingMfa() {
         UpdateSecuritySettingsRequest request = new UpdateSecuritySettingsRequest(
                 Set.of("PASSWORD"), 480, 120, 10, 12, 72, true, Set.of(), Set.of("LOGIN_FAILURE"));
+        when(settingsRepository.findById(organizationId)).thenReturn(Optional.of(settings()));
 
-        assertThat(catchBusiness(() -> service.update(principal(), request)).code())
-                .isEqualTo("UNSUPPORTED_SECURITY_POLICY");
+        assertThatCode(() -> service.update(principal(), request)).doesNotThrowAnyException();
+    }
+
+    @Test
+    void adminOnlyMfaPolicyDoesNotRequireMfaFromDevelopers() {
+        OrganizationSecuritySettings settings = settings();
+        settings.update("PASSWORD", 480, 120, 10, 12, 72, false, true,
+                "", "LOGIN_FAILURE", null, NOW);
+
+        assertThat(service.requiresMfa(settings,
+                com.pesaguard.backend.organization.domain.OrganizationRole.ADMIN)).isTrue();
+        assertThat(service.requiresMfa(settings,
+                com.pesaguard.backend.organization.domain.OrganizationRole.DEVELOPER)).isFalse();
+    }
+
+    @Test
+    void olderSecuritySettingsUpdatesPreserveAdminMfaPolicy() {
+        OrganizationSecuritySettings existing = settings();
+        existing.update("PASSWORD", 480, 120, 10, 12, 72, false, true,
+                "", "LOGIN_FAILURE", null, NOW);
+        when(settingsRepository.findById(organizationId)).thenReturn(Optional.of(existing));
+        UpdateSecuritySettingsRequest request = new UpdateSecuritySettingsRequest(
+                Set.of("PASSWORD"), 480, 120, 10, 12, 72, false, null,
+                Set.of(), Set.of("LOGIN_FAILURE"));
+
+        assertThat(service.update(principal(), request).mfaRequiredForAdmins()).isTrue();
     }
 
     @Test

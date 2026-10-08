@@ -90,11 +90,15 @@ class SandboxServiceTest {
     void setUp() {
         service = new SandboxService(sandboxRepository, guardRepository, limitsRepository,
                 historyRepository, environmentRepository, mock(AuthorizationService.class),
-                mock(AuditService.class), Clock.fixed(NOW, ZoneOffset.UTC));
+                mock(AuditService.class), mock(com.pesaguard.backend.environment.application.EnvironmentAccessPolicyService.class),
+                mock(com.pesaguard.backend.project.application.ProjectAuthorization.class), Clock.fixed(NOW, ZoneOffset.UTC));
         // Mockito returns null from unstubbed save(); echo the argument like the
         // real repository does.
         when(sandboxRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
         when(sandboxRepository.saveAndFlush(any())).thenAnswer(invocation -> invocation.getArgument(0));
+        when(environmentRepository.findByIdAndOrganizationIdAndProjectId(
+                environmentId, organizationId, projectId))
+                .thenReturn(Optional.of(environment(EnvironmentType.SANDBOX, EnvironmentStatus.ACTIVE)));
     }
 @Test
     void aSandboxCannotBeCreatedAgainstProduction() {
@@ -180,7 +184,9 @@ class SandboxServiceTest {
         var afterExpiry = Clock.fixed(sandbox.getExpiresAt().plusSeconds(1), ZoneOffset.UTC);
         SandboxService later = new SandboxService(sandboxRepository, guardRepository,
                 limitsRepository, historyRepository, environmentRepository,
-                mock(AuthorizationService.class), mock(AuditService.class), afterExpiry);
+                mock(AuthorizationService.class), mock(AuditService.class),
+                mock(com.pesaguard.backend.environment.application.EnvironmentAccessPolicyService.class),
+                mock(com.pesaguard.backend.project.application.ProjectAuthorization.class), afterExpiry);
 
         assertThatThrownBy(() -> later.requireExecutableIsolation(principal(), sandbox.getId()))
                 .isInstanceOf(BusinessException.class)

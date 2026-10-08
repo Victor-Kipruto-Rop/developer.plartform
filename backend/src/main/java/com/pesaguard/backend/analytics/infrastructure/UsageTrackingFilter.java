@@ -87,7 +87,7 @@ public class UsageTrackingFilter extends OncePerRequestFilter {
         }
 
         RequestAttribution.Resolved attribution = attribute(request);
-        if (attribution == null || attribution.organizationId() == null) {
+        if (attribution == null || attribution.organizationId() == null || attribution.environmentId() == null) {
             return;
         }
 

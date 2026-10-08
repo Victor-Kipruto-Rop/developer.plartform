@@ -17,6 +17,14 @@ public record UpdateSecuritySettingsRequest(
         @Min(12) @Max(72) int credentialMinLength,
         @Min(12) @Max(72) int credentialMaxLength,
         boolean mfaRequired,
+        Boolean mfaRequiredForAdmins,
         @NotNull @Size(max = 50) Set<@Size(min = 3, max = 64) String> ipAllowlist,
         @NotEmpty @Size(max = 20) Set<@Pattern(regexp = "[A-Z][A-Z0-9_]{1,63}") String> securityEventTypes) {
+
+    public UpdateSecuritySettingsRequest(Set<String> allowedAuthMethods, int sessionTtlMinutes,
+            int idleTimeoutMinutes, int maxSessions, int credentialMinLength, int credentialMaxLength,
+            boolean mfaRequired, Set<String> ipAllowlist, Set<String> securityEventTypes) {
+        this(allowedAuthMethods, sessionTtlMinutes, idleTimeoutMinutes, maxSessions,
+                credentialMinLength, credentialMaxLength, mfaRequired, false, ipAllowlist, securityEventTypes);
+    }
 }

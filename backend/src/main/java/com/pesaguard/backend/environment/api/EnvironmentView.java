@@ -16,9 +16,18 @@ public record EnvironmentView(
         Map<String, Object> configuration,
         Instant statusChangedAt,
         Instant createdAt,
-        Instant updatedAt) {
+        Instant updatedAt,
+        String baseUrl) {
 
     public EnvironmentView {
         configuration = configuration == null ? Map.of() : Map.copyOf(configuration);
+        baseUrl = EnvironmentApiBaseUrls.forType(type);
+    }
+
+    public EnvironmentView(UUID id, UUID projectId, String name, EnvironmentType type,
+            EnvironmentStatus status, Map<String, Object> configuration,
+            Instant statusChangedAt, Instant createdAt, Instant updatedAt) {
+        this(id, projectId, name, type, status, configuration, statusChangedAt, createdAt, updatedAt,
+                EnvironmentApiBaseUrls.forType(type));
     }
 }

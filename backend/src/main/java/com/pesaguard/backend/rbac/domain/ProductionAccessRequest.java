@@ -39,6 +39,27 @@ public class ProductionAccessRequest {
     @Column(name = "reason", nullable = false, length = 1000)
     private String reason;
 
+    @Column(name = "application_name", nullable = false, length = 160)
+    private String applicationName;
+
+    @Column(name = "organization_details", nullable = false, length = 2000)
+    private String organizationDetails;
+
+    @Column(name = "intended_api_usage", nullable = false, length = 2000)
+    private String intendedApiUsage;
+
+    @Column(name = "requested_scopes", nullable = false, length = 1000)
+    private String requestedScopes;
+
+    @Column(name = "requested_limits", nullable = false, length = 1000)
+    private String requestedLimits;
+
+    @Column(name = "integration_information", nullable = false, length = 2000)
+    private String integrationInformation;
+
+    @Column(name = "security_information", nullable = false, length = 2000)
+    private String securityInformation;
+
     @Enumerated(EnumType.STRING)
     @Column(name = "status", nullable = false, length = 24)
     private ProductionAccessStatus status;
@@ -85,24 +106,40 @@ public class ProductionAccessRequest {
     }
 
     private ProductionAccessRequest(UUID organizationId, UUID projectId, UUID environmentId,
-            UUID requestedBy, String reason, Instant now) {
+            UUID requestedBy, String reason, String applicationName, String organizationDetails,
+            String intendedApiUsage, String requestedScopes, String requestedLimits,
+            String integrationInformation, String securityInformation, Instant now) {
         this.id = UUID.randomUUID();
         this.organizationId = organizationId;
         this.projectId = projectId;
         this.environmentId = environmentId;
         this.requestedBy = requestedBy;
         this.reason = reason.trim();
+        this.applicationName = applicationName.trim();
+        this.organizationDetails = organizationDetails.trim();
+        this.intendedApiUsage = intendedApiUsage.trim();
+        this.requestedScopes = requestedScopes.trim();
+        this.requestedLimits = requestedLimits.trim();
+        this.integrationInformation = integrationInformation.trim();
+        this.securityInformation = securityInformation.trim();
         this.status = ProductionAccessStatus.PENDING;
         this.createdAt = now;
         this.updatedAt = now;
     }
 
     public static ProductionAccessRequest create(UUID organizationId, UUID projectId, UUID environmentId,
-            UUID requestedBy, String reason, Instant now) {
-        if (reason == null || reason.isBlank()) {
-            throw new IllegalArgumentException("A reason is required for production access");
-        }
-        return new ProductionAccessRequest(organizationId, projectId, environmentId, requestedBy, reason, now);
+            UUID requestedBy, String reason, String applicationName, String organizationDetails,
+            String intendedApiUsage, String requestedScopes, String requestedLimits,
+            String integrationInformation, String securityInformation, Instant now) {
+        return new ProductionAccessRequest(organizationId, projectId, environmentId, requestedBy,
+                requireText(reason, "A reason is required for production access"),
+                requireText(applicationName, "An application name is required"),
+                requireText(organizationDetails, "Organization details are required"),
+                requireText(intendedApiUsage, "Intended API usage is required"),
+                requireText(requestedScopes, "Requested scopes are required"),
+                requireText(requestedLimits, "Requested limits are required"),
+                requireText(integrationInformation, "Integration information is required"),
+                requireText(securityInformation, "Security information is required"), now);
     }
 
     public void approve(UUID reviewerId, String note, Instant expiresAt, Instant now) {
@@ -295,6 +332,13 @@ public class ProductionAccessRequest {
     public UUID getEnvironmentId() { return environmentId; }
     public UUID getRequestedBy() { return requestedBy; }
     public String getReason() { return reason; }
+    public String getApplicationName() { return applicationName; }
+    public String getOrganizationDetails() { return organizationDetails; }
+    public String getIntendedApiUsage() { return intendedApiUsage; }
+    public String getRequestedScopes() { return requestedScopes; }
+    public String getRequestedLimits() { return requestedLimits; }
+    public String getIntegrationInformation() { return integrationInformation; }
+    public String getSecurityInformation() { return securityInformation; }
     public ProductionAccessStatus getStatus() { return status; }
     public UUID getReviewedBy() { return reviewedBy; }
     public Instant getReviewedAt() { return reviewedAt; }

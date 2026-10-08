@@ -8,6 +8,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
+import com.pesaguard.backend.common.api.SafeExceptionDiagnostics;
 import com.pesaguard.backend.ratelimit.domain.RateLimitDecision;
 import com.pesaguard.backend.ratelimit.domain.RateLimitPolicy;
 import com.pesaguard.backend.ratelimit.domain.RateLimitScope;
@@ -26,6 +27,9 @@ import com.pesaguard.backend.ratelimit.domain.RateLimitScope;
  */
 @Service
 public class RateLimitService {
+
+    public static final String RESPONSE_DECISION_ATTRIBUTE =
+            RateLimitService.class.getName() + ".responseDecision";
 
     private static final Logger log = LoggerFactory.getLogger(RateLimitService.class);
 
@@ -51,43 +55,54 @@ public class RateLimitService {
             return RateLimitDecision.unlimited();
         }
 
-        // A failing limiter must not take the API down. Fail open, and say so
-        // loudly: the alternative removes protection precisely when something is
-        // probing. This is the explicit trade-off isAvailable() exists to make.
-        if (!store.isAvailable()) {
-            log.error("rate limit store unavailable; failing open for organizationId={}",
-                    request.organizationId());
-            return RateLimitDecision.unlimited();
+        try {
+            if (!store.isAvailable()) {
+                throw new RateLimitUnavailableException();
+            }
+
+            long now = clockMillis(request);
+            RateLimitDecision strictest = null;
+
+            for (RateLimitPolicy policy : sortedBySpecificity(policies)) {
+                if (!policy.appliesTo(request.organizationId(), request.endpoint())) {
+                    continue;
+                }
+                RateLimitDecision decision = store.consume(policy, counterKey(policy, request), now);
+
+                if (!decision.allowed()) {
+                    return decision;
+                }
+                if (strictest == null || decision.remaining() < strictest.remaining()) {
+                    strictest = decision;
+                }
+            }
+
+            return strictest == null ? RateLimitDecision.unlimited() : strictest;
+        } catch (RateLimitUnavailableException unavailable) {
+            throw unavailable;
+        } catch (RuntimeException failure) {
+            log.error("rate limit evaluation failed; failing closed for organizationId={} type={} diagnostic={}",
+                    request.organizationId(), failure.getClass().getName(),
+                    SafeExceptionDiagnostics.stackTrace(failure));
+            throw new RateLimitUnavailableException();
         }
-
-        long now = clockMillis(request);
-        RateLimitDecision strictest = null;
-
-        for (RateLimitPolicy policy : sortedBySpecificity(policies)) {
-            if (!policy.appliesTo(request.organizationId(), request.endpoint())) {
-                continue;
-            }
-            RateLimitDecision decision = store.consume(policy, counterKey(policy, request), now);
-
-            if (!decision.allowed()) {
-                // First refusal wins: an exhausted endpoint limit is more
-                // actionable than an organization-wide one.
-                return decision;
-            }
-            if (strictest == null || decision.remaining() < strictest.remaining()) {
-                strictest = decision;
-            }
-        }
-
-        return strictest == null ? RateLimitDecision.unlimited() : strictest;
     }
 
     /** Reads counters without consuming them, for the developer-facing view. */
     public RateLimitDecision peek(RateLimitRequest request, RateLimitPolicy policy) {
-        if (!store.isAvailable()) {
-            return RateLimitDecision.unlimited();
+        try {
+            if (!store.isAvailable()) {
+                throw new RateLimitUnavailableException();
+            }
+            return store.peek(policy, counterKey(policy, request), clockMillis(request));
+        } catch (RateLimitUnavailableException unavailable) {
+            throw unavailable;
+        } catch (RuntimeException failure) {
+            log.error("rate limit preview failed organizationId={} type={} diagnostic={}",
+                    request.organizationId(), failure.getClass().getName(),
+                    SafeExceptionDiagnostics.stackTrace(failure));
+            throw new RateLimitUnavailableException();
         }
-        return store.peek(policy, counterKey(policy, request), clockMillis(request));
     }
 
     private long clockMillis(RateLimitRequest request) {

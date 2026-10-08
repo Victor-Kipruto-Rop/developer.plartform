@@ -52,6 +52,7 @@ public enum AuditAction {
     API_KEY_CREATED(AuditCategory.CREDENTIAL),
     API_KEY_ROTATED(AuditCategory.CREDENTIAL),
     API_KEY_REVOKED(AuditCategory.CREDENTIAL),
+    API_KEY_COMPROMISED(AuditCategory.CREDENTIAL),
     API_KEY_SUSPENDED(AuditCategory.CREDENTIAL),
     API_KEY_RESTRICTED(AuditCategory.CREDENTIAL),
 

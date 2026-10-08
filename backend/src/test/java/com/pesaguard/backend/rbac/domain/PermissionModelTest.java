@@ -27,7 +27,11 @@ class PermissionModelTest {
                 "usage:read",
                 "audit:read",
                 "security:read", "security:control",
-                "production_access:request", "production_access:review");
+                "workspace_settings:read", "workspace_settings:update",
+                "workspace:invite", "workspace_member:remove",
+                "production_access:request", "production_access:review",
+                "production:view", "production:verify", "production:launch",
+                "production:suspend", "production:resume");
     }
 
     @Test
@@ -55,6 +59,21 @@ class PermissionModelTest {
                 Permission.PROJECT_DELETE, Permission.PRODUCTION_ACCESS_REVIEW, Permission.AUDIT_READ);
         assertThat(OrganizationRole.SECURITY.permissions()).doesNotContain(
                 Permission.ORGANIZATION_UPDATE, Permission.PROJECT_CREATE, Permission.PROJECT_DELETE);
+    }
+
+    @Test
+    void goLivePermissionsSeparateViewingVerificationAndLifecycleControl() {
+        assertThat(OrganizationRole.DEVELOPER.permissions())
+                .contains(Permission.PRODUCTION_VIEW, Permission.PRODUCTION_VERIFY)
+                .doesNotContain(Permission.PRODUCTION_LAUNCH, Permission.PRODUCTION_SUSPEND,
+                        Permission.PRODUCTION_RESUME);
+        assertThat(OrganizationRole.VIEWER.permissions())
+                .contains(Permission.PRODUCTION_VIEW)
+                .doesNotContain(Permission.PRODUCTION_VERIFY, Permission.PRODUCTION_LAUNCH);
+        assertThat(OrganizationRole.OWNER.permissions())
+                .contains(Permission.PRODUCTION_VIEW, Permission.PRODUCTION_VERIFY,
+                        Permission.PRODUCTION_LAUNCH, Permission.PRODUCTION_SUSPEND,
+                        Permission.PRODUCTION_RESUME);
     }
 
     @Test
@@ -103,5 +122,6 @@ class PermissionModelTest {
     void resourceIsDerivedFromThePermissionString() {
         assertThat(Permission.CREDENTIAL_ROTATE.resource()).isEqualTo("credential");
         assertThat(Permission.PRODUCTION_ACCESS_REVIEW.resource()).isEqualTo("production_access");
+        assertThat(Permission.PRODUCTION_VERIFY.resource()).isEqualTo("production");
     }
 }

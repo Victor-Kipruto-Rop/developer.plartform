@@ -16,9 +16,12 @@ import com.pesaguard.backend.common.api.RequestContext;
 import com.pesaguard.backend.common.exception.BusinessException;
 import com.pesaguard.backend.common.exception.ResourceNotFoundException;
 import com.pesaguard.backend.environment.domain.EnvironmentStatus;
+import com.pesaguard.backend.environment.domain.EnvironmentPermission;
+import com.pesaguard.backend.environment.application.EnvironmentAccessPolicyService;
 import com.pesaguard.backend.environment.domain.EnvironmentType;
 import com.pesaguard.backend.environment.domain.ProjectEnvironment;
 import com.pesaguard.backend.environment.infrastructure.ProjectEnvironmentRepository;
+import com.pesaguard.backend.project.application.ProjectAuthorization;
 import com.pesaguard.backend.rbac.application.AuthorizationService;
 import com.pesaguard.backend.rbac.domain.Permission;
 import com.pesaguard.backend.sandbox.domain.Sandbox;
@@ -53,6 +56,8 @@ public class SandboxService {
     private final AuthorizationService authorizationService;
     private final AuditService auditService;
     private final Clock clock;
+    private final EnvironmentAccessPolicyService environmentAccessPolicyService;
+    private final ProjectAuthorization projectAuthorization;
 
     public SandboxService(
             SandboxRepository sandboxRepository,
@@ -62,6 +67,8 @@ public class SandboxService {
             ProjectEnvironmentRepository environmentRepository,
             AuthorizationService authorizationService,
             AuditService auditService,
+            EnvironmentAccessPolicyService environmentAccessPolicyService,
+            ProjectAuthorization projectAuthorization,
             Clock clock) {
         this.sandboxRepository = sandboxRepository;
         this.guardRepository = guardRepository;
@@ -70,6 +77,8 @@ public class SandboxService {
         this.environmentRepository = environmentRepository;
         this.authorizationService = authorizationService;
         this.auditService = auditService;
+        this.environmentAccessPolicyService = environmentAccessPolicyService;
+        this.projectAuthorization = projectAuthorization;
         this.clock = clock;
     }
 
@@ -87,6 +96,8 @@ public class SandboxService {
         ProjectEnvironment environment = environmentRepository
                 .findByIdAndOrganizationId(environmentId, principal.organizationId())
                 .orElseThrow(() -> new ResourceNotFoundException("Environment"));
+        projectAuthorization.requireProjectManage(principal, environment.getProjectId());
+        environmentAccessPolicyService.requireAccess(principal, environment, EnvironmentPermission.WRITE);
 
         if (environment.getType() != EnvironmentType.SANDBOX) {
             // Refused here as well as in the isolation token. Two independent checks
@@ -120,6 +131,7 @@ public class SandboxService {
     public Sandbox activate(AuthenticatedUser principal, UUID sandboxId) {
         authorizationService.requirePermission(principal, Permission.SANDBOX_ACTIVATE);
         Sandbox sandbox = require(principal, sandboxId);
+        requireEnvironmentAccess(principal, sandbox, EnvironmentPermission.WRITE);
         SandboxStatus from = sandbox.getStatus();
         sandbox.activate(clock.instant());
         record(principal, sandbox, from, "sandbox.activated", null);
@@ -130,6 +142,7 @@ public class SandboxService {
     public Sandbox suspend(AuthenticatedUser principal, UUID sandboxId, String reason) {
         authorizationService.requirePermission(principal, Permission.SANDBOX_SUSPEND);
         Sandbox sandbox = require(principal, sandboxId);
+        requireEnvironmentAccess(principal, sandbox, EnvironmentPermission.WRITE);
         SandboxStatus from = sandbox.getStatus();
         sandbox.suspend(clock.instant());
         record(principal, sandbox, from, "sandbox.suspended", reason);
@@ -140,6 +153,7 @@ public class SandboxService {
     public Sandbox resume(AuthenticatedUser principal, UUID sandboxId) {
         authorizationService.requirePermission(principal, Permission.SANDBOX_ACTIVATE);
         Sandbox sandbox = require(principal, sandboxId);
+        requireEnvironmentAccess(principal, sandbox, EnvironmentPermission.WRITE);
         SandboxStatus from = sandbox.getStatus();
         Instant now = clock.instant();
         try {
@@ -159,6 +173,7 @@ public class SandboxService {
     public Sandbox delete(AuthenticatedUser principal, UUID sandboxId, String reason) {
         authorizationService.requirePermission(principal, Permission.SANDBOX_DELETE);
         Sandbox sandbox = require(principal, sandboxId);
+        requireEnvironmentAccess(principal, sandbox, EnvironmentPermission.WRITE);
         SandboxStatus from = sandbox.getStatus();
         sandbox.delete(clock.instant());
         sandboxRepository.saveAndFlush(sandbox);
@@ -179,6 +194,7 @@ public class SandboxService {
     public Sandbox reset(AuthenticatedUser principal, UUID sandboxId, String reason) {
         authorizationService.requirePermission(principal, Permission.SANDBOX_RESET);
         Sandbox sandbox = require(principal, sandboxId);
+        requireEnvironmentAccess(principal, sandbox, EnvironmentPermission.WRITE);
         sandbox.recordReset(clock.instant());
         sandboxRepository.saveAndFlush(sandbox);
         record(principal, sandbox, sandbox.getStatus(), "sandbox.reset", reason);
@@ -206,6 +222,7 @@ public class SandboxService {
     @Transactional(readOnly = true)
     public SandboxIsolation requireExecutableIsolation(AuthenticatedUser principal, UUID sandboxId) {
         Sandbox sandbox = require(principal, sandboxId);
+        requireEnvironmentAccess(principal, sandbox, EnvironmentPermission.WRITE);
         Instant now = clock.instant();
         SandboxStatus effective = sandbox.effectiveStatus(now);
         if (!effective.allowsExecution()) {
@@ -222,7 +239,8 @@ public class SandboxService {
     /** The sandbox's quota. Defaults are created with the sandbox, so absent is a fault. */
     @Transactional(readOnly = true)
     public SandboxLimits limits(AuthenticatedUser principal, UUID sandboxId) {
-        require(principal, sandboxId);
+        Sandbox sandbox = require(principal, sandboxId);
+        requireEnvironmentAccess(principal, sandbox, EnvironmentPermission.READ);
         return limitsRepository.findBySandboxId(sandboxId)
                 .orElseThrow(() -> new BusinessException(HttpStatus.CONFLICT,
                         "SANDBOX_LIMITS_MISSING", "The sandbox has no configured limits."));
@@ -232,17 +250,22 @@ public class SandboxService {
     public List<Sandbox> list(AuthenticatedUser principal, UUID projectId) {
         authorizationService.requirePermission(principal, Permission.SANDBOX_READ);
         if (projectId == null) {
-            return sandboxRepository.findByOrganizationIdOrderByCreatedAtDesc(
-                    principal.organizationId());
+            return sandboxRepository.findByOrganizationIdOrderByCreatedAtDesc(principal.organizationId())
+                    .stream().filter(sandbox -> projectAuthorization.hasProjectRead(principal, sandbox.getProjectId()))
+                    .filter(sandbox -> canReadEnvironment(principal, sandbox)).toList();
         }
+        projectAuthorization.requireProjectRead(principal, projectId);
         return sandboxRepository.findByOrganizationIdAndProjectIdOrderByCreatedAtDesc(
-                principal.organizationId(), projectId);
+                        principal.organizationId(), projectId).stream()
+                .filter(sandbox -> canReadEnvironment(principal, sandbox)).toList();
     }
 
     @Transactional(readOnly = true)
     public Sandbox get(AuthenticatedUser principal, UUID sandboxId) {
         authorizationService.requirePermission(principal, Permission.SANDBOX_READ);
-        return require(principal, sandboxId);
+        Sandbox sandbox = require(principal, sandboxId);
+        requireEnvironmentAccess(principal, sandbox, EnvironmentPermission.READ);
+        return sandbox;
     }
 
     @Transactional
@@ -252,6 +275,7 @@ public class SandboxService {
             int executionTimeoutMs, int maxHistoryEntries) {
         authorizationService.requirePermission(principal, Permission.SANDBOX_UPDATE);
         Sandbox sandbox = require(principal, sandboxId);
+        requireEnvironmentAccess(principal, sandbox, EnvironmentPermission.WRITE);
         SandboxLimits limits = limitsRepository.findBySandboxId(sandboxId)
                 .orElseGet(() -> SandboxLimits.defaults(sandboxId, principal.organizationId()));
         limits.update(requestsPerMinute, burstRequests, maxApiKeys, maxCredentials,
@@ -284,6 +308,35 @@ public class SandboxService {
     private Sandbox require(AuthenticatedUser principal, UUID sandboxId) {
         return sandboxRepository.findByIdAndOrganizationId(sandboxId, principal.organizationId())
                 .orElseThrow(() -> new ResourceNotFoundException("Sandbox"));
+    }
+
+    public void requireEnvironmentAccess(AuthenticatedUser principal, UUID sandboxId,
+            EnvironmentPermission permission) {
+        Sandbox sandbox = require(principal, sandboxId);
+        requireEnvironmentAccess(principal, sandbox, permission);
+    }
+
+    private void requireEnvironmentAccess(AuthenticatedUser principal, Sandbox sandbox,
+            EnvironmentPermission permission) {
+        if (permission == EnvironmentPermission.READ) {
+            projectAuthorization.requireProjectRead(principal, sandbox.getProjectId());
+        } else {
+            projectAuthorization.requireProjectManage(principal, sandbox.getProjectId());
+        }
+        ProjectEnvironment environment = environmentRepository
+                .findByIdAndOrganizationIdAndProjectId(
+                        sandbox.getEnvironmentId(), principal.organizationId(), sandbox.getProjectId())
+                .orElseThrow(() -> new ResourceNotFoundException("Environment"));
+        environmentAccessPolicyService.requireAccess(principal, environment, permission);
+    }
+
+    private boolean canReadEnvironment(AuthenticatedUser principal, Sandbox sandbox) {
+        if (!projectAuthorization.hasProjectRead(principal, sandbox.getProjectId())) return false;
+        return environmentRepository.findByIdAndOrganizationIdAndProjectId(
+                        sandbox.getEnvironmentId(), principal.organizationId(), sandbox.getProjectId())
+                .map(environment -> environmentAccessPolicyService.canAccess(
+                        principal, environment, EnvironmentPermission.READ))
+                .orElse(false);
     }
 
     private void record(AuthenticatedUser principal, Sandbox sandbox, SandboxStatus from,

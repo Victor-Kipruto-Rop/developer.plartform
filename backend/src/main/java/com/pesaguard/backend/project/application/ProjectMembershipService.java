@@ -68,7 +68,7 @@ public class ProjectMembershipService {
 
     @Transactional
     public ProjectMemberView add(AuthenticatedUser principal, UUID projectId, AddProjectMemberRequest request) {
-        Project project = requireProject(principal, projectId);
+        Project project = requireProject(principal, projectId, true);
         authorization.requireProjectManage(principal, projectId);
         requireActiveProject(project);
         organizationMembershipRepository.findByOrganizationIdAndUserId(principal.organizationId(), request.userId())
@@ -76,7 +76,7 @@ public class ProjectMembershipService {
                 .orElseThrow(() -> new BusinessException(HttpStatus.BAD_REQUEST,
                         "PROJECT_MEMBER_NOT_IN_ORGANIZATION",
                         "The user must be an active member of the organization."));
-        ProjectMember existing = memberRepository.findByProjectIdAndUserId(projectId, request.userId())
+        ProjectMember existing = memberRepository.findByProjectIdAndUserIdForUpdate(projectId, request.userId())
                 .orElse(null);
         if (existing != null && existing.isActive()) {
             throw new BusinessException(HttpStatus.CONFLICT, "PROJECT_MEMBER_ALREADY_EXISTS",
@@ -100,10 +100,10 @@ public class ProjectMembershipService {
     @Transactional
     public ProjectMemberView changeRole(AuthenticatedUser principal, UUID projectId, UUID memberId,
             ChangeProjectMemberRoleRequest request) {
-        Project project = requireProject(principal, projectId);
+        Project project = requireProject(principal, projectId, true);
         authorization.requireProjectManage(principal, projectId);
         requireActiveProject(project);
-        ProjectMember member = memberRepository.findByIdAndProjectId(memberId, projectId)
+        ProjectMember member = memberRepository.findByIdAndProjectIdForUpdate(memberId, projectId)
                 .orElseThrow(() -> new ResourceNotFoundException("Project membership"));
         member.changeRole(request.role());
         memberRepository.saveAndFlush(member);
@@ -114,9 +114,9 @@ public class ProjectMembershipService {
 
     @Transactional
     public void revoke(AuthenticatedUser principal, UUID projectId, UUID memberId) {
-        Project project = requireProject(principal, projectId);
+        Project project = requireProject(principal, projectId, true);
         authorization.requireProjectManage(principal, projectId);
-        ProjectMember member = memberRepository.findByIdAndProjectId(memberId, projectId)
+        ProjectMember member = memberRepository.findByIdAndProjectIdForUpdate(memberId, projectId)
                 .orElseThrow(() -> new ResourceNotFoundException("Project membership"));
         if (member.getUserId().equals(principal.userId())) {
             throw new BusinessException(HttpStatus.CONFLICT, "PROJECT_MEMBER_SELF_REVOKE",
@@ -131,7 +131,13 @@ public class ProjectMembershipService {
     }
 
     private Project requireProject(AuthenticatedUser principal, UUID projectId) {
-        return projectRepository.findByIdAndOrganizationId(projectId, principal.organizationId())
+        return requireProject(principal, projectId, false);
+    }
+
+    private Project requireProject(AuthenticatedUser principal, UUID projectId, boolean forUpdate) {
+        return (forUpdate
+                ? projectRepository.findByIdAndOrganizationIdForUpdate(projectId, principal.organizationId())
+                : projectRepository.findByIdAndOrganizationId(projectId, principal.organizationId()))
                 .orElseThrow(() -> new ResourceNotFoundException("Project"));
     }
 

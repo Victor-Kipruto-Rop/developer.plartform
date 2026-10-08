@@ -20,10 +20,11 @@ public enum ApiKeyStatus {
     ACTIVE,
     SUSPENDED,
     REVOKED,
-    EXPIRED;
+    EXPIRED,
+    COMPROMISED;
 
     public boolean isTerminal() {
-        return this == REVOKED || this == EXPIRED;
+        return this == REVOKED || this == EXPIRED || this == COMPROMISED;
     }
 
     public boolean canAuthenticate() {

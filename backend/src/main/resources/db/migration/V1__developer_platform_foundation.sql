@@ -41,7 +41,7 @@ create index organization_memberships_user_idx on organization_memberships(user_
 
 create table auth_sessions (
     id uuid primary key,
-    token_hash char(64) not null unique,
+    token_hash varchar(64) not null unique,
     membership_id uuid not null references organization_memberships(id),
     expires_at timestamptz not null,
     revoked_at timestamptz,
@@ -52,7 +52,7 @@ create index auth_sessions_active_idx on auth_sessions(token_hash, expires_at) w
 
 create table login_throttles (
     subject_type varchar(16) not null,
-    subject_hash char(64) not null,
+    subject_hash varchar(64) not null,
     failure_count integer not null,
     window_started_at timestamptz not null,
     blocked_until timestamptz,
@@ -104,7 +104,7 @@ create table api_keys (
     environment_id uuid not null references project_environments(id),
     name varchar(120) not null,
     key_prefix varchar(32) not null unique,
-    secret_hash char(64) not null unique,
+    secret_hash varchar(64) not null unique,
     scopes text not null,
     status varchar(24) not null,
     expires_at timestamptz,
@@ -129,8 +129,8 @@ create table audit_events (
     resource_id varchar(100) not null,
     request_id uuid not null,
     metadata text not null,
-    previous_hash char(64) not null,
-    event_hash char(64) not null unique,
+    previous_hash varchar(64) not null,
+    event_hash varchar(64) not null unique,
     created_at timestamptz not null,
     constraint audit_events_sequence_unique unique (organization_id, sequence_number)
 );

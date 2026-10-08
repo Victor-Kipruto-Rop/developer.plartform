@@ -24,6 +24,7 @@ import org.springframework.jdbc.core.RowMapper;
 
 import com.pesaguard.backend.common.exception.TooManyRequestsException;
 import com.pesaguard.backend.config.ApplicationProperties;
+import com.pesaguard.backend.security.TestProperties;
 
 class RequestThrottleServiceTest {
 
@@ -87,13 +88,6 @@ class RequestThrottleServiceTest {
     }
 
     private ApplicationProperties properties() {
-        return new ApplicationProperties(new ApplicationProperties.Security(
-                List.of(URI.create("https://developers.pesaguard.victorkipruto.com")),
-                Duration.ofHours(8),
-                "Y3JlZGVudGlhbC1rZXktMzItYnl0ZXMh",
-                "YXVkaXQta2V5LTMyLWJ5dGVzISEhISE=",
-                true, 4, 3, 10, Duration.ofMinutes(15), Duration.ofDays(7), 30, Duration.ofMinutes(15)),
-                new ApplicationProperties.Platform(
-                        "b3BlcmF0b3Ita2V5LTMyLWJ5dGVzISEhISEh"));
+        return TestProperties.platform();
     }
 }

@@ -1,7 +1,6 @@
 package com.pesaguard.backend.tenancy;
 
 import java.io.IOException;
-import java.util.UUID;
 
 import org.slf4j.MDC;
 import org.springframework.core.Ordered;
@@ -46,7 +45,7 @@ public class TenantContextFilter extends OncePerRequestFilter {
 
         TenantContext context = new TenantContext(
                 user.organizationId(), user.organizationId(), user.userId(), user.sessionId(),
-                pathUuid(request, "projects"), pathUuid(request, "environments"),
+                null, null,
                 RequestContext.currentRequestId().toString(), RequestContext.currentRemoteAddress(),
                 RequestContext.currentUserAgent());
         TenantContextHolder.set(context);
@@ -63,20 +62,6 @@ public class TenantContextFilter extends OncePerRequestFilter {
             TenantContextHolder.clear();
             clearMdc();
         }
-    }
-
-    private UUID pathUuid(HttpServletRequest request, String segment) {
-        String[] parts = request.getRequestURI().split("/");
-        for (int index = 0; index < parts.length - 1; index++) {
-            if (segment.equals(parts[index])) {
-                try {
-                    return UUID.fromString(parts[index + 1]);
-                } catch (IllegalArgumentException ignored) {
-                    return null;
-                }
-            }
-        }
-        return null;
     }
 
     private void putMdc(String key, Object value) {

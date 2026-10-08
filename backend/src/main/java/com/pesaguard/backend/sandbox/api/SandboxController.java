@@ -17,7 +17,9 @@ import org.springframework.web.bind.annotation.RestController;
 import com.pesaguard.backend.common.api.ApiResponse;
 import com.pesaguard.backend.sandbox.application.SandboxExecutionService;
 import com.pesaguard.backend.sandbox.application.SandboxLimitsService;
+import com.pesaguard.backend.sandbox.application.SandboxOperationResult;
 import com.pesaguard.backend.sandbox.application.SandboxService;
+import com.pesaguard.backend.sandbox.domain.SandboxExecutionKind;
 import com.pesaguard.backend.security.principals.AuthenticatedUser;
 
 import jakarta.validation.Valid;
@@ -104,6 +106,19 @@ public class SandboxController {
             @PathVariable UUID sandboxId,
             @RequestParam(defaultValue = "50") int limit) {
         return ApiResponse.of(executionService.history(principal, sandboxId, limit));
+    }
+
+    @PostMapping("/{sandboxId}/simulate")
+    ApiResponse<SandboxExecutionView> simulate(
+            @AuthenticationPrincipal AuthenticatedUser principal,
+            @PathVariable UUID sandboxId,
+            @Valid @RequestBody RunSandboxScenarioRequest request) {
+        SandboxScenario scenario = request.scenario();
+        SandboxExecutionKind kind = scenario.kind();
+        String body = scenario.resultBody(request.effectiveAmount(), request.effectiveCurrency());
+        return ApiResponse.of(executionService.execute(principal, sandboxId, kind,
+                scenario.method(), scenario.path(), body.length(), 1_000,
+                (isolation, timeoutMs) -> SandboxOperationResult.status(scenario.statusCode(), body)));
     }
 
     @PutMapping("/{sandboxId}/limits")

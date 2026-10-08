@@ -29,7 +29,48 @@ public enum OrganizationRole {
     DEVELOPER,
     SECURITY,
     ANALYST,
-    VIEWER;
+    /**
+     * Read-only across the organization, including audit and security posture.
+     *
+     * <p>Strictly a superset of ANALYST's visibility. The distinction is that a
+     * VIEWER holds no permission that can change anything: not settings, not
+     * credentials, not members. Anyone who later needs to change something has to
+     * be granted that separately rather than inheriting it.
+     */
+    VIEWER,
+
+    /**
+     * The product specification's name for the read-only role.
+     *
+     * <p>Identical powers to {@link #VIEWER} and deliberately both retained:
+     * {@code VIEWER} is already stored in {@code organization_memberships.role},
+     * so replacing it would need a data migration and would break any external
+     * report keyed on the value. Having two names for one privilege is a small
+     * wart; silently rewriting people's stored roles to match a rename is a
+     * larger one.
+     */
+    READ_ONLY,
+
+    /**
+     * Financial oversight: usage and audit visibility, nothing operational.
+     *
+     * <p>Deliberately cannot reach credentials, webhooks, projects or production
+     * access review. Someone who watches spend should not also be able to move
+     * money or reissue production secrets. It holds the read half of settings so
+     * the session and access policy behind a spend can be correlated with it, but
+     * never the write half.
+     */
+    FINANCE,
+
+    /**
+     * Independent review of the audit trail.
+     *
+     * <p>Holds AUDIT_READ and little else. An auditor who could also change
+     * configuration would be auditing their own work, which defeats the role. It
+     * is the narrowest of the non-read-only-named roles on purpose: the power is
+     * to look, not to act.
+     */
+    AUDITOR;
 
     public Set<Permission> permissions() {
         return switch (this) {
@@ -51,7 +92,12 @@ public enum OrganizationRole {
                     Permission.SANDBOX_EXECUTE, Permission.SANDBOX_DELETE,
                     Permission.USAGE_READ, Permission.AUDIT_READ,
                      Permission.SECURITY_READ, Permission.SECURITY_CONTROL,
-                     Permission.PRODUCTION_ACCESS_REVIEW);
+                     Permission.PRODUCTION_ACCESS_REVIEW,
+                     Permission.PRODUCTION_VIEW, Permission.PRODUCTION_VERIFY,
+                     Permission.PRODUCTION_LAUNCH, Permission.PRODUCTION_SUSPEND,
+                     Permission.PRODUCTION_RESUME,
+                     Permission.WORKSPACE_SETTINGS_READ, Permission.WORKSPACE_SETTINGS_UPDATE,
+                     Permission.WORKSPACE_INVITE, Permission.WORKSPACE_MEMBER_REMOVE);
             case ADMIN -> Set.of(
                     Permission.ORGANIZATION_READ, Permission.ORGANIZATION_UPDATE,
                     Permission.PROJECT_READ, Permission.PROJECT_CREATE,
@@ -70,7 +116,12 @@ public enum OrganizationRole {
                     Permission.SANDBOX_EXECUTE, Permission.SANDBOX_DELETE,
                     Permission.USAGE_READ, Permission.AUDIT_READ,
                     Permission.SECURITY_READ,
-                    Permission.PRODUCTION_ACCESS_REQUEST);
+                    Permission.PRODUCTION_ACCESS_REQUEST,
+                    Permission.PRODUCTION_VIEW, Permission.PRODUCTION_VERIFY,
+                    Permission.PRODUCTION_LAUNCH, Permission.PRODUCTION_SUSPEND,
+                    Permission.PRODUCTION_RESUME,
+                    Permission.WORKSPACE_SETTINGS_READ, Permission.WORKSPACE_SETTINGS_UPDATE,
+                    Permission.WORKSPACE_INVITE, Permission.WORKSPACE_MEMBER_REMOVE);
             case DEVELOPER -> Set.of(
                     Permission.ORGANIZATION_READ,
                     Permission.PROJECT_READ, Permission.PROJECT_CREATE, Permission.PROJECT_UPDATE,
@@ -87,6 +138,7 @@ public enum OrganizationRole {
                     Permission.SANDBOX_ACTIVATE, Permission.SANDBOX_SUSPEND, Permission.SANDBOX_RESET,
                     Permission.SANDBOX_EXECUTE, Permission.SANDBOX_DELETE,
                     Permission.USAGE_READ,
+                    Permission.PRODUCTION_VIEW, Permission.PRODUCTION_VERIFY,
                     Permission.PRODUCTION_ACCESS_REQUEST);
             case SECURITY -> Set.of(
                     Permission.ORGANIZATION_READ,
@@ -95,6 +147,7 @@ public enum OrganizationRole {
                     Permission.CREDENTIAL_READ, Permission.CREDENTIAL_REVOKE, Permission.CREDENTIAL_ROTATE, Permission.CREDENTIAL_UPDATE,
                     Permission.WEBHOOK_READ,
                     Permission.USAGE_READ, Permission.AUDIT_READ,
+                    Permission.PRODUCTION_VIEW,
                     Permission.SECURITY_READ, Permission.SECURITY_CONTROL,
                     Permission.PRODUCTION_ACCESS_REVIEW);
             case ANALYST -> Set.of(
@@ -102,11 +155,23 @@ public enum OrganizationRole {
                     Permission.PROJECT_READ,
                     Permission.ENVIRONMENT_READ,
                     Permission.USAGE_READ, Permission.AUDIT_READ,
+                    Permission.PRODUCTION_VIEW,
                     Permission.SECURITY_READ);
-            case VIEWER -> Set.of(
+            case VIEWER, READ_ONLY -> Set.of(
                     Permission.ORGANIZATION_READ,
                     Permission.PROJECT_READ,
-                    Permission.ENVIRONMENT_READ);
+                    Permission.ENVIRONMENT_READ,
+                    Permission.PRODUCTION_VIEW,
+                    Permission.WORKSPACE_SETTINGS_READ);
+            case FINANCE -> Set.of(
+                    Permission.ORGANIZATION_READ,
+                    Permission.USAGE_READ,
+                    Permission.AUDIT_READ,
+                    Permission.WORKSPACE_SETTINGS_READ);
+            case AUDITOR -> Set.of(
+                    Permission.ORGANIZATION_READ,
+                    Permission.AUDIT_READ,
+                    Permission.WORKSPACE_SETTINGS_READ);
         };
     }
 

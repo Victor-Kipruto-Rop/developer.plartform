@@ -57,8 +57,7 @@ public class EventSubscription {
     @Column(name = "project_id", nullable = false)
     private UUID projectId;
 
-    /** Null means every environment in the project. */
-    @Column(name = "environment_id")
+    @Column(name = "environment_id", nullable = false)
     private UUID environmentId;
 
     @Column(name = "endpoint_id", nullable = false, length = 128)
@@ -102,7 +101,7 @@ public class EventSubscription {
         this.id = UUID.randomUUID();
         this.organizationId = Objects.requireNonNull(organizationId, "organizationId");
         this.projectId = Objects.requireNonNull(projectId, "projectId");
-        this.environmentId = environmentId;
+        this.environmentId = Objects.requireNonNull(environmentId, "environmentId");
         this.endpointId = Objects.requireNonNull(endpointId, "endpointId");
         this.eventType = Objects.requireNonNull(eventType, "eventType").value();
         if (eventVersion < 1) {
@@ -194,7 +193,7 @@ public class EventSubscription {
 
     /** A null environment accepts any; a pinned one accepts only its own. */
     public boolean matchesEnvironment(UUID candidateEnvironmentId) {
-        return environmentId == null || environmentId.equals(candidateEnvironmentId);
+        return environmentId.equals(candidateEnvironmentId);
     }
 
     public void suspend() {

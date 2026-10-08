@@ -1,7 +1,6 @@
 package com.pesaguard.backend.project.application;
 
 import java.util.List;
-import java.util.Set;
 import java.util.UUID;
 
 import org.springframework.stereotype.Component;
@@ -42,30 +41,23 @@ public class ProjectAuthorization {
     }
 
     public void requireProjectRead(AuthenticatedUser principal, UUID projectId) {
-        if (isOrganizationManager(principal)) {
-            return;
-        }
-        if (memberRepository.findByProjectIdAndUserId(projectId, principal.userId())
-                .filter(member -> member.isActive())
-                .isEmpty()) {
+        if (!hasProjectRead(principal, projectId)) {
             throw denied();
         }
     }
 
+    public boolean hasProjectRead(AuthenticatedUser principal, UUID projectId) {
+        return isOrganizationManager(principal)
+                || memberRepository.findByProjectIdAndUserId(projectId, principal.userId())
+                        .filter(member -> member.isActive())
+                        .isPresent();
+    }
+
     public boolean isOrganizationManager(AuthenticatedUser principal) {
         return principal.authorities().stream()
-                .map(String::valueOf)
                 .map(authority -> authority.startsWith("ROLE_") ? authority.substring("ROLE_".length()) : authority)
-                .map(role -> {
-                    try {
-                        return OrganizationRole.valueOf(role);
-                    } catch (IllegalArgumentException exception) {
-                        return null;
-                    }
-                })
-                .filter(Set.of(OrganizationRole.OWNER, OrganizationRole.ADMIN)::contains)
-                .findFirst()
-                .isPresent();
+                .anyMatch(role -> OrganizationRole.OWNER.name().equals(role)
+                        || OrganizationRole.ADMIN.name().equals(role));
     }
 
     public ProjectMemberRole effectiveRole(AuthenticatedUser principal, UUID projectId) {

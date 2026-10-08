@@ -163,9 +163,7 @@ public class RedisRateLimitCounterStore implements RateLimitCounterStore {
             redis.hasKey("rl:__health");
             return true;
         } catch (RuntimeException unavailable) {
-            // Reported honestly rather than assumed: a limiter that silently believes
-            // it is enforcing when Redis is down has stopped limiting at all.
-            log.error("redis is unavailable; rate limiting is not being enforced");
+            log.error("redis is unavailable; enforced requests will be rejected");
             return false;
         }
     }

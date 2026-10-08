@@ -41,6 +41,12 @@ public enum OperatorCapability {
     /** See usage. */
     USAGE_READ,
 
+    /** Access support tickets across organizations. */
+    SUPPORT_READ,
+
+    /** Resolve support tickets across organizations. */
+    SUPPORT_RESOLVE,
+
     /** See production access requests across tenants. */
     PRODUCTION_READ,
 
@@ -67,7 +73,13 @@ public enum OperatorCapability {
 
     /** Read and change developer-platform configuration. */
     PLATFORM_CONFIG_READ,
-    PLATFORM_CONFIG_WRITE;
+    PLATFORM_CONFIG_WRITE,
+
+    /** Read billing records and payment processing state across organizations. */
+    BILLING_READ,
+
+    /** Issue, void, and reconcile customer invoices or payments. */
+    BILLING_WRITE;
 
     /**
      * Whether this capability changes customer-visible state.
@@ -78,7 +90,7 @@ public enum OperatorCapability {
     public boolean isMutating() {
         return this == CREDENTIALS_SUSPEND || this == CREDENTIALS_REVOKE
                 || this == PRODUCTION_REVIEW || this == SECURITY_RESOLVE
-                || this == PLATFORM_CONFIG_WRITE;
+                || this == SUPPORT_RESOLVE || this == PLATFORM_CONFIG_WRITE || this == BILLING_WRITE;
     }
 
     /** Whether this capability concerns credentials. */

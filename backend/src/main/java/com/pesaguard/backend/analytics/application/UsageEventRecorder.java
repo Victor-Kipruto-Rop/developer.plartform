@@ -13,6 +13,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.DisposableBean;
 import org.springframework.stereotype.Component;
 
+import com.pesaguard.backend.common.api.SafeExceptionDiagnostics;
 import com.pesaguard.backend.analytics.domain.ApiRequestEvent;
 
 /**
@@ -109,7 +110,8 @@ public class UsageEventRecorder implements DisposableBean, AutoCloseable {
             } catch (RuntimeException failure) {
                 // The writer thread must survive anything the sink throws, or one
                 // bad event would stop all subsequent recording.
-                log.error("usage event writer failed; continuing", failure);
+                log.error("usage event writer failed; continuing type={} diagnostic={}",
+                        failure.getClass().getName(), SafeExceptionDiagnostics.stackTrace(failure));
                 batch.clear();
             }
         }
@@ -122,7 +124,9 @@ public class UsageEventRecorder implements DisposableBean, AutoCloseable {
             // One unwritable event must not stop the rest, and must not be lost
             // silently either.
             dropped.incrementAndGet();
-            log.error("failed to persist usage event requestId={}", event.getRequestId(), failure);
+            log.error("failed to persist usage event requestId={} type={} diagnostic={}",
+                    event.getRequestId(), failure.getClass().getName(),
+                    SafeExceptionDiagnostics.stackTrace(failure));
         }
     }
 

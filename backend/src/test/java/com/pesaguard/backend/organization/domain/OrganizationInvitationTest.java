@@ -19,7 +19,7 @@ class OrganizationInvitationTest {
     private OrganizationInvitation pendingInvitation() {
         return OrganizationInvitation.create(
                 organizationId, "invitee@example.com", OrganizationRole.DEVELOPER,
-                tokenHash, now.plusSeconds(3600), inviterId);
+                tokenHash, null, null, now.plusSeconds(3600), inviterId);
     }
 
     @Test

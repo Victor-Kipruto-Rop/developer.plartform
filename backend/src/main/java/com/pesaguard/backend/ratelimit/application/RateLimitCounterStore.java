@@ -40,11 +40,9 @@ public interface RateLimitCounterStore {
     /**
      * Whether the store can currently serve requests.
      *
-     * <p><b>Fail-open or fail-closed is a decision the caller must make
-     * deliberately, never by accident.</b> A limiter that throws when its store is
-     * down takes the API down with it; one that silently allows everything removes
-     * protection exactly when an attacker is most likely to be probing. This
-     * method exists so that choice is explicit and testable.
+     * <p>The enforcing path fails closed when this method returns false. Keeping
+     * availability explicit lets the service distinguish a configured unlimited
+     * policy from a counter store that cannot enforce any policy.
      */
     boolean isAvailable();
 

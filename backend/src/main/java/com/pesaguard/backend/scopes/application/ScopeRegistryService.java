@@ -47,6 +47,7 @@ public class ScopeRegistryService {
     private final AuthorizationService authorizationService;
     private final AuditService auditService;
     private final Clock clock;
+    private final com.pesaguard.backend.credentials.api.ApiKeyRepository apiKeyRepository;
 
     public ScopeRegistryService(
             ApiScopeDefinitionRepository definitionRepository,
@@ -54,17 +55,25 @@ public class ScopeRegistryService {
             ApiScopeAssignmentRepository assignmentRepository,
             AuthorizationService authorizationService,
             AuditService auditService,
-            Clock clock) {
+            Clock clock,
+            com.pesaguard.backend.credentials.api.ApiKeyRepository apiKeyRepository) {
         this.definitionRepository = definitionRepository;
         this.restrictionRepository = restrictionRepository;
         this.assignmentRepository = assignmentRepository;
         this.authorizationService = authorizationService;
         this.auditService = auditService;
         this.clock = clock;
+        this.apiKeyRepository = apiKeyRepository;
     }
 @Transactional(readOnly = true)
     public List<ScopeView> catalog(AuthenticatedUser principal, boolean includeDeprecated) {
-        authorizationService.requirePermission(principal, Permission.CREDENTIAL_READ);
+        // The catalog contains globally assignable scope metadata, not credential
+        // inventory. A role allowed to create a key needs the catalog to request
+        // its scopes even when it cannot read existing keys.
+        if (!authorizationService.hasPermission(principal, Permission.CREDENTIAL_READ)
+                && !authorizationService.hasPermission(principal, Permission.CREDENTIAL_CREATE)) {
+            authorizationService.requirePermission(principal, Permission.CREDENTIAL_READ);
+        }
         List<ApiScopeDefinition> definitions = definitionRepository.findAllByOrderByCategoryAscNameAsc();
         if (!includeDeprecated) {
             definitions = definitions.stream().filter(definition -> !definition.isDeprecated()).toList();
@@ -111,6 +120,10 @@ public class ScopeRegistryService {
             if (definition.isDeprecated()) {
                 deprecated.add(scope.value());
             }
+            if (!definition.isApiKeyAssignable()) {
+                throw new BusinessException(HttpStatus.BAD_REQUEST, "SCOPE_UNAVAILABLE",
+                        "Scope is not currently available to API keys: " + scope.value());
+            }
             parsed.add(scope);
         }
         return new ScopeValidation(parsed, deprecated);
@@ -120,12 +133,22 @@ public class ScopeRegistryService {
      * Grants scopes to a credential, recording who granted each one and at which
      * registry version. Re-granting an existing scope is a no-op rather than an
      * error, so a retried request does not fabricate a second grant.
+     *
+     * <p>Least-privilege reconciliation: the assignment table is the grant
+     * record, but the credential's {@code scopes} column is what the API-key
+     * authentication path reads. Both are rewritten here in the same
+     * transaction so a grant takes effect immediately and revocation below
+     * removes it immediately. A grant for a non-existent key fails closed.
      */
     @Transactional
     public List<ScopeAssignmentView> assign(AuthenticatedUser principal, UUID apiKeyId,
             Set<String> requested) {
         authorizationService.requirePermission(principal, Permission.CREDENTIAL_CREATE);
         ScopeValidation validation = validate(requested);
+        com.pesaguard.backend.credentials.api.ApiKey key = apiKeyRepository
+                .findById(apiKeyId)
+                .filter(candidate -> candidate.getOrganizationId().equals(principal.organizationId()))
+                .orElseThrow(() -> new ResourceNotFoundException("API key"));
         List<ScopeAssignmentView> granted = new java.util.ArrayList<>();
         for (ApiScope scope : validation.scopes()) {
             ApiScopeDefinition definition = requireDefinition(scope.value());
@@ -140,6 +163,7 @@ public class ScopeRegistryService {
                             "scopeVersion", Integer.toString(definition.getVersion())));
             granted.add(ScopeAssignmentView.from(assignment));
         }
+        rewriteKeyScopesFromAssignments(key);
         return granted;
     }
 
@@ -155,6 +179,35 @@ public class ScopeRegistryService {
         auditService.append(principal.organizationId(), principal.userId(), "api_scope.revoked",
                 "api_scope", assignment.getScopeName(), RequestContext.currentRequestId(),
                 Map.of("assignmentId", assignmentId.toString()));
+        apiKeyRepository.findById(assignment.getApiKeyId())
+                .filter(candidate -> candidate.getOrganizationId().equals(principal.organizationId()))
+                .ifPresent(this::rewriteKeyScopesFromAssignments);
+    }
+
+    /**
+     * Rewrites the credential's scopes column from its active assignments so
+     * the authentication path and the grant record can never drift apart.
+     * Active assignments only; sorted and deduplicated for determinism.
+     */
+    @Transactional
+    public void reconcileKeyScopes(AuthenticatedUser principal, UUID apiKeyId) {
+        authorizationService.requirePermission(principal, Permission.CREDENTIAL_READ);
+        com.pesaguard.backend.credentials.api.ApiKey key = apiKeyRepository
+                .findById(apiKeyId)
+                .filter(candidate -> candidate.getOrganizationId().equals(principal.organizationId()))
+                .orElseThrow(() -> new ResourceNotFoundException("API key"));
+        rewriteKeyScopesFromAssignments(key);
+    }
+
+    private void rewriteKeyScopesFromAssignments(com.pesaguard.backend.credentials.api.ApiKey key) {
+        String encoded = assignmentRepository.findByApiKeyIdOrderByGrantedAtDesc(key.getId()).stream()
+                .filter(assignment -> assignment.isActive())
+                .map(ApiScopeAssignment::getScopeName)
+                .distinct()
+                .sorted()
+                .collect(java.util.stream.Collectors.joining(","));
+        key.updateScopes(encoded);
+        apiKeyRepository.saveAndFlush(key);
     }
 
     @Transactional(readOnly = true)

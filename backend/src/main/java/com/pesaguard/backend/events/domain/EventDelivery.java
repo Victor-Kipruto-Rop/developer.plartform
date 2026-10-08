@@ -144,6 +144,15 @@ public class EventDelivery {
         this.nextAttemptAt = deadLettered ? null : nextAttemptAt;
     }
 
+    /** Records a non-retryable response without misclassifying it as a dead letter. */
+    public void markPermanentlyFailed(int statusCode, String errorCode, int latencyMs) {
+        this.status = DeliveryStatus.FAILED;
+        this.responseCode = statusCode;
+        this.errorCode = truncate(errorCode);
+        this.latencyMs = Math.max(0, latencyMs);
+        this.nextAttemptAt = null;
+    }
+
     /** Suppressed because the subscription was not active. */
     public void markSuppressed(String reason) {
         this.status = DeliveryStatus.SUPPRESSED;

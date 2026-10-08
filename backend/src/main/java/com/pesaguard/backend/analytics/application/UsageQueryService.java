@@ -8,14 +8,20 @@ import java.util.Set;
 import java.util.UUID;
 
 import org.springframework.http.HttpStatus;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.pesaguard.backend.analytics.domain.UsageBucket;
 import com.pesaguard.backend.analytics.domain.UsageGranularity;
 import com.pesaguard.backend.analytics.infrastructure.UsageBucketRepository;
+import com.pesaguard.backend.credentials.api.ApiKeyRepository;
+import com.pesaguard.backend.common.exception.ResourceNotFoundException;
 import com.pesaguard.backend.common.exception.BusinessException;
 import com.pesaguard.backend.common.exception.UnauthorizedException;
+import com.pesaguard.backend.project.application.ProjectAccessScope;
+import com.pesaguard.backend.rbac.application.AuthorizationService;
 import com.pesaguard.backend.rbac.domain.Permission;
 import com.pesaguard.backend.security.principals.AuthenticatedUser;
 
@@ -36,10 +42,18 @@ public class UsageQueryService {
 
     private final UsageBucketRepository bucketRepository;
     private final Clock clock;
+    private final ProjectAccessScope projectAccessScope;
+    private final AuthorizationService authorizationService;
+    private final ApiKeyRepository apiKeyRepository;
 
-    public UsageQueryService(UsageBucketRepository bucketRepository, Clock clock) {
+    public UsageQueryService(UsageBucketRepository bucketRepository, Clock clock,
+            ProjectAccessScope projectAccessScope, AuthorizationService authorizationService,
+            ApiKeyRepository apiKeyRepository) {
         this.bucketRepository = bucketRepository;
         this.clock = clock;
+        this.projectAccessScope = projectAccessScope;
+        this.authorizationService = authorizationService;
+        this.apiKeyRepository = apiKeyRepository;
     }
 
     /**
@@ -52,7 +66,14 @@ public class UsageQueryService {
     @Transactional(readOnly = true)
     public UsageSeries series(AuthenticatedUser principal, Instant from, Instant to,
             UsageGranularity requested, UUID projectId, UUID environmentId) {
+        return series(principal, from, to, requested, projectId, environmentId, null);
+    }
+
+    @Transactional(readOnly = true)
+    public UsageSeries series(AuthenticatedUser principal, Instant from, Instant to,
+            UsageGranularity requested, UUID projectId, UUID environmentId, UUID apiKeyId) {
         requireUsageRead(principal);
+        requireKeyScope(principal, projectId, environmentId, apiKeyId);
         Instant windowFrom = from == null ? clock.instant().minus(Duration.ofHours(24)) : from;
         Instant windowTo = to == null ? clock.instant() : to;
         Duration span = Duration.between(windowFrom, windowTo);
@@ -70,11 +91,64 @@ public class UsageQueryService {
                 ? requested
                 : UsageAggregationService.recommendedFor(span);
 
-        List<UsageBucket> buckets = bucketRepository.findForOrganization(
-                principal.organizationId(), granularity, windowFrom, windowTo);
+        ProjectAccessScope.Scope scope = projectAccessScope.resolve(principal, projectId, environmentId);
+        if (scope.isEmpty()) {
+            return new UsageSeries(granularity, windowFrom, windowTo, UsageSummary.from(List.of()), List.of());
+        }
+        List<UsageBucket> buckets = scope.projectIds() == null
+                ? bucketRepository.findForOrganization(principal.organizationId(), granularity, windowFrom, windowTo)
+                : bucketRepository.findForOrganizationAndProjects(principal.organizationId(), scope.projectIds(),
+                        granularity, windowFrom, windowTo);
 
+        List<UsageBucket> filteredBuckets = filterByDimensions(
+                buckets, scope.projectId(), scope.environmentId(), apiKeyId);
         return new UsageSeries(granularity, windowFrom, windowTo,
-                UsageSummary.from(buckets), filterByDimensions(buckets, projectId, environmentId));
+                UsageSummary.from(filteredBuckets), filteredBuckets.stream().map(UsagePoint::from).toList());
+    }
+
+    /**
+     * Bounded, tenant and project scoped usage rows for CSV export. Pagination is
+     * pushed into the repository so a large export cannot materialize every
+     * usage dimension in application memory.
+     */
+    @Transactional(readOnly = true)
+    public Page<UsageBucket> exportRows(AuthenticatedUser principal, Instant from, Instant to,
+            UsageGranularity requested, UUID projectId, UUID environmentId, Pageable pageable) {
+        return exportRows(principal, from, to, requested, projectId, environmentId, null, pageable);
+    }
+
+    @Transactional(readOnly = true)
+    public Page<UsageBucket> exportRows(AuthenticatedUser principal, Instant from, Instant to,
+            UsageGranularity requested, UUID projectId, UUID environmentId, UUID apiKeyId,
+            Pageable pageable) {
+        requireUsageRead(principal);
+        requireKeyScope(principal, projectId, environmentId, apiKeyId);
+        Instant windowFrom = from == null ? clock.instant().minus(Duration.ofHours(24)) : from;
+        Instant windowTo = to == null ? clock.instant() : to;
+        Duration span = Duration.between(windowFrom, windowTo);
+        if (span.isNegative() || span.isZero()) {
+            throw new BusinessException(HttpStatus.BAD_REQUEST, "USAGE_RANGE_INVALID",
+                    "The end of the range must be after the start.");
+        }
+        if (span.compareTo(MAX_SPAN) > 0) {
+            throw new BusinessException(HttpStatus.BAD_REQUEST, "USAGE_RANGE_TOO_LARGE",
+                    "The range may not exceed " + MAX_SPAN.toDays() + " days.");
+        }
+
+        UsageGranularity granularity = requested != null
+                ? requested
+                : UsageAggregationService.recommendedFor(span);
+        ProjectAccessScope.Scope scope = projectAccessScope.resolve(principal, projectId, environmentId);
+        if (scope.isEmpty()) {
+            return Page.empty(pageable);
+        }
+        if (scope.projectIds() == null) {
+            return bucketRepository.findExportRowsForOrganization(principal.organizationId(),
+                    granularity, windowFrom, windowTo, scope.projectId(), scope.environmentId(), apiKeyId, pageable);
+        }
+        return bucketRepository.findExportRowsForProjects(principal.organizationId(),
+                scope.projectIds(), granularity, windowFrom, windowTo, scope.projectId(),
+                scope.environmentId(), apiKeyId, pageable);
     }
 
     /**
@@ -84,25 +158,66 @@ public class UsageQueryService {
      * predicate is applied by the repository and cannot be influenced by these
      * parameters, so a caller cannot use them to escape their own data.
      */
-    private List<UsagePoint> filterByDimensions(List<UsageBucket> buckets,
-            UUID projectId, UUID environmentId) {
+    private List<UsageBucket> filterByDimensions(List<UsageBucket> buckets,
+            UUID projectId, UUID environmentId, UUID apiKeyId) {
         return buckets.stream()
                 .filter(bucket -> projectId == null || projectId.equals(bucket.getProjectId()))
                 .filter(bucket -> environmentId == null
                         || environmentId.equals(bucket.getEnvironmentId()))
-                .map(UsagePoint::from)
+                .filter(bucket -> apiKeyId == null || apiKeyId.equals(bucket.getApiKeyId()))
                 .toList();
     }
 
     /** Endpoints used in a window, for a usage breakdown. */
     @Transactional(readOnly = true)
     public List<String> endpoints(AuthenticatedUser principal, Instant from, Instant to,
-            UsageGranularity granularity) {
+            UsageGranularity granularity, UUID projectId, UUID environmentId) {
+        return endpoints(principal, from, to, granularity, projectId, environmentId, null);
+    }
+
+    @Transactional(readOnly = true)
+    public List<String> endpoints(AuthenticatedUser principal, Instant from, Instant to,
+            UsageGranularity granularity, UUID projectId, UUID environmentId, UUID apiKeyId) {
         requireUsageRead(principal);
+        requireKeyScope(principal, projectId, environmentId, apiKeyId);
         Instant windowFrom = from == null ? clock.instant().minus(Duration.ofHours(24)) : from;
         Instant windowTo = to == null ? clock.instant() : to;
-        return bucketRepository.findDistinctEndpoints(principal.organizationId(),
-                granularity, windowFrom, windowTo);
+        ProjectAccessScope.Scope scope = projectAccessScope.resolve(principal, projectId, environmentId);
+        if (scope.isEmpty()) return List.of();
+        if (apiKeyId != null) {
+            List<UsageBucket> buckets = scope.projectIds() == null
+                    ? bucketRepository.findForOrganization(principal.organizationId(), granularity,
+                            windowFrom, windowTo)
+                    : bucketRepository.findForOrganizationAndProjects(principal.organizationId(),
+                            scope.projectIds(), granularity, windowFrom, windowTo);
+            return buckets.stream()
+                    .filter(bucket -> apiKeyId.equals(bucket.getApiKeyId()))
+                    .filter(bucket -> scope.projectId() == null || scope.projectId().equals(bucket.getProjectId()))
+                    .filter(bucket -> scope.environmentId() == null || scope.environmentId().equals(bucket.getEnvironmentId()))
+                    .map(UsageBucket::getEndpoint)
+                    .distinct()
+                    .sorted()
+                    .toList();
+        }
+        return scope.projectIds() == null
+                ? bucketRepository.findDistinctEndpoints(principal.organizationId(),
+                        granularity, windowFrom, windowTo)
+                : bucketRepository.findDistinctEndpointsForProjects(principal.organizationId(), scope.projectIds(),
+                        scope.environmentId(), granularity, windowFrom, windowTo);
+    }
+
+    private void requireKeyScope(AuthenticatedUser principal, UUID projectId,
+            UUID environmentId, UUID apiKeyId) {
+        if (apiKeyId == null) return;
+        if (projectId == null || environmentId == null) {
+            throw new BusinessException(HttpStatus.BAD_REQUEST, "USAGE_KEY_SCOPE_REQUIRED",
+                    "Project and environment are required when filtering usage by API key.");
+        }
+        authorizationService.requirePermission(principal, Permission.CREDENTIAL_READ);
+        if (!apiKeyRepository.existsByIdAndOrganizationIdAndProjectIdAndEnvironmentId(
+                apiKeyId, principal.organizationId(), projectId, environmentId)) {
+            throw new ResourceNotFoundException("API key");
+        }
     }
 
     /**
@@ -116,8 +231,7 @@ public class UsageQueryService {
             throw new UnauthorizedException("USAGE_UNAUTHENTICATED",
                     "Authentication is required.");
         }
-        Set<String> authorities = principal.authorities();
-        if (!authorities.contains(Permission.USAGE_READ.value())) {
+        if (!authorizationService.hasPermission(principal, Permission.USAGE_READ)) {
             throw new BusinessException(HttpStatus.FORBIDDEN, "USAGE_FORBIDDEN",
                     "You do not have permission to read usage.");
         }

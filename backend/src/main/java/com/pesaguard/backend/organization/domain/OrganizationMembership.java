@@ -15,6 +15,7 @@ import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
+import jakarta.persistence.Version;
 
 import com.pesaguard.backend.member.domain.UserAccount;
 
@@ -48,6 +49,10 @@ public class OrganizationMembership {
     @UpdateTimestamp
     @Column(name = "updated_at", nullable = false)
     private Instant updatedAt;
+
+    @Version
+    @Column(name = "version", nullable = false)
+    private long version;
 
     protected OrganizationMembership() {
     }
@@ -140,7 +145,6 @@ public class OrganizationMembership {
     }
 
     public boolean isActive() {
-        return status == MembershipStatus.ACTIVE && user.isActive();
+        return status == MembershipStatus.ACTIVE && user.getStatus().canAuthenticate();
     }
 }
-

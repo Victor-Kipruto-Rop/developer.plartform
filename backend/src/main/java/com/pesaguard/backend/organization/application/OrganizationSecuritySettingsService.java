@@ -32,7 +32,8 @@ public class OrganizationSecuritySettingsService {
 
     private static final Set<String> SUPPORTED_EVENT_TYPES = Set.of(
             "LOGIN_FAILURE", "MEMBERSHIP_CHANGED", "SECURITY_SETTING_CHANGED",
-            "ORGANIZATION_LIFECYCLE", "INVITATION_CREATED", "INVITATION_ACCEPTED", "INVITATION_REVOKED");
+            "ORGANIZATION_LIFECYCLE", "INVITATION_CREATED", "INVITATION_ACCEPTED",
+            "INVITATION_DECLINED", "INVITATION_REVOKED");
 
     private final OrganizationSecuritySettingsRepository settingsRepository;
     private final OrganizationRepository organizationRepository;
@@ -88,15 +89,21 @@ public class OrganizationSecuritySettingsService {
         }
         validate(request);
         OrganizationSecuritySettings settings = getOrCreate(principal.organizationId());
+        boolean mfaRequiredForAdmins = request.mfaRequiredForAdmins() == null
+                ? settings.isMfaRequiredForAdmins()
+                : request.mfaRequiredForAdmins();
         settings.update(encode(request.allowedAuthMethods()), request.sessionTtlMinutes(), request.idleTimeoutMinutes(),
                 request.maxSessions(), request.credentialMinLength(), request.credentialMaxLength(),
-                request.mfaRequired(), encode(request.ipAllowlist()), encode(request.securityEventTypes()),
+                request.mfaRequired(), mfaRequiredForAdmins,
+                encode(request.ipAllowlist()), encode(request.securityEventTypes()),
                 principal.userId(), clock.instant());
         settingsRepository.saveAndFlush(settings);
         cache.invalidate(principal.organizationId());
         auditService.append(principal.organizationId(), principal.userId(), "organization.security_settings.updated",
                 "organization_security_settings", principal.organizationId().toString(), RequestContext.currentRequestId(),
-                java.util.Map.of("mfaRequired", request.mfaRequired(), "sessionTtlMinutes", request.sessionTtlMinutes()));
+                java.util.Map.of("mfaRequired", request.mfaRequired(),
+                        "mfaRequiredForAdmins", mfaRequiredForAdmins,
+                        "sessionTtlMinutes", request.sessionTtlMinutes()));
         eventPublisher.publish(principal.organizationId(), principal.userId(), "organization.security_settings.updated",
                 principal.organizationId(), RequestContext.currentRequestId(), java.util.Map.of());
         return toView(settings);
@@ -107,10 +114,12 @@ public class OrganizationSecuritySettingsService {
             throw new BusinessException(HttpStatus.FORBIDDEN, "AUTH_METHOD_DISABLED",
                     "Password authentication is disabled for the organization.");
         }
-        if (settings.isMfaRequired()) {
-            throw new BusinessException(HttpStatus.FORBIDDEN, "MFA_REQUIRED",
-                    "Multi-factor authentication is required but is not configured for this deployment.");
-        }
+    }
+
+    public boolean requiresMfa(OrganizationSecuritySettings settings, OrganizationRole role) {
+        return settings.isMfaRequired()
+                || (settings.isMfaRequiredForAdmins()
+                        && (role == OrganizationRole.ADMIN || role == OrganizationRole.OWNER));
     }
 
     public void assertIpAllowed(OrganizationSecuritySettings settings, String remoteAddress) {
@@ -129,10 +138,6 @@ public class OrganizationSecuritySettingsService {
                 || request.allowedAuthMethods().stream().anyMatch(method -> !"PASSWORD".equals(method))) {
             throw new BusinessException(HttpStatus.BAD_REQUEST, "UNSUPPORTED_AUTH_METHOD",
                     "Only PASSWORD authentication is available in this deployment.");
-        }
-        if (request.mfaRequired()) {
-            throw new BusinessException(HttpStatus.BAD_REQUEST, "UNSUPPORTED_SECURITY_POLICY",
-                    "MFA cannot be enabled until an MFA provider is configured.");
         }
         if (!SUPPORTED_EVENT_TYPES.containsAll(request.securityEventTypes())) {
             throw new BusinessException(HttpStatus.BAD_REQUEST, "UNSUPPORTED_SECURITY_EVENT",
@@ -157,7 +162,8 @@ public class OrganizationSecuritySettingsService {
         return new OrganizationSecuritySettingsView(settings.getOrganizationId(),
                 decode(settings.getAllowedAuthMethods()), settings.getSessionTtlMinutes(), settings.getIdleTimeoutMinutes(),
                 settings.getMaxSessions(), settings.getCredentialMinLength(), settings.getCredentialMaxLength(),
-                settings.isMfaRequired(), decode(settings.getIpAllowlist()), decode(settings.getSecurityEventTypes()),
+                settings.isMfaRequired(), settings.isMfaRequiredForAdmins(),
+                decode(settings.getIpAllowlist()), decode(settings.getSecurityEventTypes()),
                 settings.getUpdatedAt());
     }
 }

@@ -19,9 +19,9 @@ import java.util.regex.Pattern;
  */
 public record ApiScope(String resource, String action) implements Comparable<ApiScope> {
 
-    /** Same grammar the V7 migration enforces in its check constraint. */
+    /** Same grammar enforced by the api_scopes_name_format database constraint. */
     private static final Pattern PATTERN =
-            Pattern.compile("^[a-z][a-z0-9-]{1,47}:[a-z][a-z0-9-]{1,23}$");
+            Pattern.compile("^[a-z][a-z0-9_-]{1,47}:[a-z][a-z0-9_-]{1,23}$");
 
     public ApiScope {
         Objects.requireNonNull(resource, "resource");

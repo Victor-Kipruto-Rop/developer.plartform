@@ -12,10 +12,14 @@ public record AuthenticatedUser(
         String email,
         String displayName,
         Set<String> authorities,
-        OrganizationStatus organizationStatus) {
+        OrganizationStatus organizationStatus,
+        boolean serviceAccount,
+        Set<String> serviceScopes,
+        boolean mfaEnrollmentOnly) {
 
     public AuthenticatedUser {
         authorities = Set.copyOf(authorities);
+        serviceScopes = serviceScopes == null ? Set.of() : Set.copyOf(serviceScopes);
     }
 
     public AuthenticatedUser(
@@ -25,7 +29,34 @@ public record AuthenticatedUser(
             String email,
             String displayName,
             Set<String> authorities) {
-        this(userId, organizationId, sessionId, email, displayName, authorities, OrganizationStatus.ACTIVE);
+        this(userId, organizationId, sessionId, email, displayName, authorities,
+                OrganizationStatus.ACTIVE, false, Set.of(), false);
+    }
+
+    public AuthenticatedUser(
+            UUID userId,
+            UUID organizationId,
+            UUID sessionId,
+            String email,
+            String displayName,
+            Set<String> authorities,
+            OrganizationStatus organizationStatus,
+            boolean serviceAccount,
+            Set<String> serviceScopes) {
+        this(userId, organizationId, sessionId, email, displayName, authorities,
+                organizationStatus, serviceAccount, serviceScopes, false);
+    }
+
+    public AuthenticatedUser(
+            UUID userId,
+            UUID organizationId,
+            UUID sessionId,
+            String email,
+            String displayName,
+            Set<String> authorities,
+            OrganizationStatus organizationStatus) {
+        this(userId, organizationId, sessionId, email, displayName, authorities,
+                organizationStatus, false, Set.of(), false);
     }
 
     public boolean organizationActive() {

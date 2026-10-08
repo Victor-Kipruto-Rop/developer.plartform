@@ -5,6 +5,8 @@ import java.util.UUID;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 
@@ -28,15 +30,22 @@ public class EnvironmentHistory {
     @Column(name = "environment_id", nullable = false)
     private UUID environmentId;
 
+    // Persisted by name, never by ordinal. Ordinal storage would silently
+    // reassign meaning if a constant is ever inserted into the enum, rewriting
+    // history rows that are append-only and therefore cannot be corrected.
+    @Enumerated(EnumType.STRING)
     @Column(name = "from_status", length = 24)
     private EnvironmentStatus fromStatus;
 
+    @Enumerated(EnumType.STRING)
     @Column(name = "to_status", nullable = false, length = 24)
     private EnvironmentStatus toStatus;
 
+    @Enumerated(EnumType.STRING)
     @Column(name = "from_type", length = 24)
     private EnvironmentType fromType;
 
+    @Enumerated(EnumType.STRING)
     @Column(name = "to_type", nullable = false, length = 24)
     private EnvironmentType toType;
 

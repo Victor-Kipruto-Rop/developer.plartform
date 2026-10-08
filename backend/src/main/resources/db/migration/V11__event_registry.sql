@@ -80,7 +80,7 @@ values
     ('developer.webhook.created', 'developer', 'webhook', 'created',
      'A webhook endpoint was registered. The signing secret is never included.', 'WEBHOOKS', 1,
      '{"type":"object","required":["id","endpoint"]}', 'ACTIVE'),
-    ('developer.webhook.delivery.failed', 'developer', 'webhook.delivery', 'delivery_failed',
+    ('developer.webhook.delivery.failed', 'developer', 'webhook.delivery', 'failed',
      'A webhook delivery exhausted its retry budget.', 'WEBHOOKS', 1,
      '{"type":"object","required":["endpoint","attempts"]}', 'ACTIVE'),
     ('developer.sandbox.created', 'developer', 'sandbox', 'created',
@@ -114,6 +114,16 @@ create table event_subscriptions (
     version_lock bigint not null default 0,
     created_at timestamptz not null default now(),
     updated_at timestamptz not null default now(),
+    constraint event_subscriptions_status_check
+        check (status in ('ACTIVE', 'SUSPENDED', 'CANCELLED')),
+    constraint event_subscriptions_version_positive check (event_version >= 1),
+    -- A subscription may not filter on its own tenant. That is exactly what would
+    -- let a subscriber reach another organization's events.
+    constraint event_subscriptions_filters_exclude_tenant check (
+        filters !~* '(^|\n)[[:space:]]*organizationId[[:space:]]*='
+    )
+);
+
 create table event_deliveries (
     id uuid primary key,
     event_id uuid not null,
@@ -168,15 +178,6 @@ drop trigger if exists event_deliveries_append_only on event_deliveries;
 create trigger event_deliveries_append_only
     before update or delete on event_deliveries
     for each row execute function prevent_event_deliveries_mutation();
-    constraint event_subscriptions_status_check
-        check (status in ('ACTIVE', 'SUSPENDED', 'CANCELLED')),
-    constraint event_subscriptions_version_positive check (event_version >= 1),
-    -- A subscription may not filter on its own tenant. That is exactly what would
-    -- let a subscriber reach another organization's events.
-    constraint event_subscriptions_filters_exclude_tenant check (
-        filters !~* '(^|\n)[[:space:]]*organizationId[[:space:]]*='
-    )
-);
 
 create index if not exists event_subscriptions_dispatch_idx
     on event_subscriptions(event_type, status);
