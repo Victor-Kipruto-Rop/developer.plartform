@@ -1,3 +1,4 @@
+import { getUserMessage } from "../../lib/errors";
 import { useEffect, useMemo, useState } from "react";
 import {
   Activity,
@@ -145,7 +146,7 @@ export function DeveloperToolsPage({ onNavigate }: { onNavigate: (page: PageId) 
         if (active) {
           setGeneratorEnvironments([]);
           setSelectedEnvironmentId("");
-          setEnvironmentError(cause instanceof Error ? cause.message : "Unable to load environments.");
+          setEnvironmentError(getUserMessage(cause, "Unable to load environments."));
         }
       })
       .finally(() => {
@@ -325,7 +326,7 @@ export function DeveloperToolsPage({ onNavigate }: { onNavigate: (page: PageId) 
       }, null, 2));
     } catch (error) {
       setKeyOutput(error instanceof ApiError
-        ? `Authentication failed: ${error.message}`
+        ? `Authentication failed: ${getUserMessage(error, "Please check your credentials and try again.")}`
         : "Connection test failed. Please try again.");
     } finally {
       setKeyTesting(false);

@@ -6,7 +6,6 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.ArgumentMatchers.nullable;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -78,7 +77,6 @@ class LoginServiceTest {
         ApplicationProperties properties = TestProperties.platform();
         when(passwordEncoder.encode(anyString())).thenReturn("encoded-placeholder");
         when(passwordEncoder.matches(anyString(), anyString())).thenReturn(true);
-        when(unfamiliarDeviceDetector.requiresEmailVerification(any(), nullable(String.class))).thenReturn(true);
         when(emailVerificationService.issueLoginMfa(any(), any())).thenAnswer(invocation ->
                 new EmailLoginMfaChallenge(UUID.randomUUID(), NOW.plus(Duration.ofMinutes(10)),
                         NOW.plusSeconds(60), "p***@example.com"));
@@ -170,7 +168,7 @@ class LoginServiceTest {
     }
 
     @Test
-    void requiresEmailVerificationWhenTheDeviceOrActivityIsUntrusted() {
+    void requiresEmailVerificationAfterPasswordAuthentication() {
         OrganizationMembership membership = membership();
         givenMemberships(List.of(membership));
         OrganizationSecuritySettings settings = OrganizationSecuritySettings.defaults(
@@ -186,21 +184,21 @@ class LoginServiceTest {
     }
 
     @Test
-    void recentlyActiveRecognisedDeviceSignsInWithoutEmailVerification() {
+    void requiresEmailVerificationEvenOnARecentlyActiveRecognisedDevice() {
         OrganizationMembership membership = membership();
         givenMemberships(List.of(membership));
         givenSettings(membership, 30, 3);
         when(unfamiliarDeviceDetector.requiresEmailVerification(
                 membership.getUser().getId(), "Chrome on Windows")).thenReturn(false);
 
-        AuthenticationResponse response = loginService.login(
+        assertThatThrownBy(() -> loginService.login(
                 new LoginRequest("person@example.com", PASSWORD, null),
-                "203.0.113.10", "Chrome on Windows");
-
-        assertThat(response).isNotNull();
-        verify(emailVerificationService, never()).issueLoginMfa(any(), any());
-        verify(sessionService).issue(membership, Duration.ofMinutes(30), 3,
-                "Chrome on Windows", "203.0.113.10");
+                "203.0.113.10", "Chrome on Windows"))
+                .isInstanceOfSatisfying(LoginEmailMfaRequiredException.class,
+                        challenge -> assertThat(challenge.challengeId()).isNotNull());
+        verify(emailVerificationService).issueLoginMfa(
+                membership.getUser().getId(), membership.getOrganization().getId());
+        verify(sessionService, never()).issue(any(), any(Duration.class), anyInt(), any(), any());
     }
 
     @Test

@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { RefreshCw } from "lucide-react";
 import { PageHeader } from "../../components/ui/PageHeader";
+import { getUserMessage } from "../../lib/errors";
 import { apiData } from "../../lib/api";
 
 type VersionedScope = { name: string; version: number; deprecated: boolean; replacedBy: string | null };
@@ -24,14 +25,14 @@ export function ApiVersionsPage() {
       setScopeError("");
     } else {
       setScopes([]);
-      setScopeError(scopeResult.reason instanceof Error ? scopeResult.reason.message : "Could not load scope versions.");
+      setScopeError(getUserMessage(scopeResult.reason, "Could not load scope versions."));
     }
     if (eventResult.status === "fulfilled") {
       setEvents(eventResult.value);
       setEventError("");
     } else {
       setEvents([]);
-      setEventError(eventResult.reason instanceof Error ? eventResult.reason.message : "Could not load event contract versions.");
+      setEventError(getUserMessage(eventResult.reason, "Could not load event contract versions."));
     }
     setLoading(false);
   }

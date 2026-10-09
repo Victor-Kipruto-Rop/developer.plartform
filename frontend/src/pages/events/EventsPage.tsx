@@ -1,3 +1,5 @@
+import { ValidatedForm } from "../../components/forms/ValidatedForm";
+import { getUserMessage } from "../../lib/errors";
 import { useEffect, useState, type FormEvent } from "react";
 import { Activity, RefreshCw } from "lucide-react";
 import { PageHeader } from "../../components/ui/PageHeader";
@@ -77,7 +79,7 @@ export function EventsPage() {
       if (selected) setActiveProject(selected);
       setEventType((current) => current || eventTypes[0]?.name || "");
     }).catch((requestError: unknown) => {
-      if (!controller.signal.aborted) setError(requestError instanceof Error ? requestError.message : "Event data could not be loaded.");
+      if (!controller.signal.aborted) setError(getUserMessage(requestError, "Event data could not be loaded."));
     }).finally(() => { if (!controller.signal.aborted) setLoading(false); });
     return () => controller.abort();
   }, [isAuthenticated, refreshKey]);
@@ -111,7 +113,7 @@ export function EventsPage() {
       if (!controller.signal.aborted) {
         setEnvironments([]);
         setEnvironmentId("");
-        setError(requestError instanceof Error ? requestError.message : "Project environments could not be loaded.");
+        setError(getUserMessage(requestError, "Project environments could not be loaded."));
       }
     });
     return () => controller.abort();
@@ -155,7 +157,7 @@ export function EventsPage() {
       if (!controller.signal.aborted) {
         setEvents([]);
         setSubscriptions([]);
-        setError(requestError instanceof Error ? requestError.message : "Environment event data could not be loaded.");
+        setError(getUserMessage(requestError, "Environment event data could not be loaded."));
       }
     });
     return () => controller.abort();
@@ -178,7 +180,7 @@ export function EventsPage() {
           ? current : result.find((endpoint) => endpoint.status === "ACTIVE")?.id ?? "");
       })
       .catch((requestError: unknown) => {
-        if (!controller.signal.aborted) setError(requestError instanceof Error ? requestError.message : "Webhook endpoints could not be loaded.");
+        if (!controller.signal.aborted) setError(getUserMessage(requestError, "Webhook endpoints could not be loaded."));
       });
     return () => controller.abort();
   }, [isAuthenticated, projectId, environmentId, refreshKey]);
@@ -197,7 +199,7 @@ export function EventsPage() {
       setMessage(`Subscribed ${created.endpointId} to ${created.eventType}.`);
       setRefreshKey((key) => key + 1);
     } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : "The event subscription could not be created.");
+      setError(getUserMessage(requestError, "The event subscription could not be created."));
     } finally {
       setSaving(false);
     }
@@ -214,7 +216,7 @@ export function EventsPage() {
       setMessage(`Subscription to ${subscription.eventType} is now ${status.toLowerCase()}.`);
       setRefreshKey((key) => key + 1);
     } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : "Subscription status could not be updated.");
+      setError(getUserMessage(requestError, "Subscription status could not be updated."));
     }
   }
 
@@ -231,7 +233,7 @@ export function EventsPage() {
       </section>
       <section className="panel">
         <div className="panel-heading"><div><h2>Subscribe a webhook endpoint</h2><p>Subscriptions are scoped to an organization project and a registered endpoint.</p></div></div>
-        <form className="workflow-form" onSubmit={createSubscription}>
+        <ValidatedForm className="workflow-form" onSubmit={createSubscription}>
           <label>Project<select required value={projectId} onChange={(event) => {
             const project = projects.find((item) => item.id === event.target.value);
             if (!project) return;
@@ -253,7 +255,7 @@ export function EventsPage() {
           <label>Webhook endpoint<select required value={endpointId} onChange={(event) => setEndpointId(event.target.value)} disabled={!projectId || saving || endpoints.length === 0}><option value="">Select an active endpoint</option>{endpoints.map((endpoint) => <option key={endpoint.id} value={endpoint.id}>{endpoint.name}</option>)}</select></label>
           <label>Event type<select required value={eventType} onChange={(event) => setEventType(event.target.value)} disabled={saving || catalog.length === 0}>{catalog.map((type) => <option key={type.name} value={type.name}>{type.name}</option>)}</select></label>
           <div className="workflow-form-actions"><button className="button button--primary" type="submit" disabled={!isAuthenticated || saving || !projectId || !environmentId || !endpointId || !eventType}>{saving ? "Saving…" : "Create subscription"}</button></div>
-        </form>
+        </ValidatedForm>
       </section>
       <section className="panel table-panel">
         <div className="panel-heading"><div><h2>Committed platform events</h2><p>Latest outbox records. Payload bodies are intentionally not exposed in this list.</p></div><span className="table-tag">{eventTotal} RECORDS</span></div>

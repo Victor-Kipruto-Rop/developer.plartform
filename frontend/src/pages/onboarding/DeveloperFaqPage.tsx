@@ -21,7 +21,7 @@ export function DeveloperFaqPage() {
     <main className="onboarding-page onboarding-faq-page">
       <header className="onboarding-topbar">
         <a className="onboarding-brand" href="/" aria-label="PesaGuard developer home">
-          <img src="/pesaguard-icon.svg" alt="" width="32" height="35" />
+          <img src="/pesaguard-brand-mark.svg" alt="" width="34" height="36" />
           <span>PesaGuard</span>
         </a>
         <nav className="onboarding-topbar-actions" aria-label="Account navigation">

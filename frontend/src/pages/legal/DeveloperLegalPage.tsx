@@ -12,7 +12,7 @@ const documents: Record<DocumentKind, {
 }> = {
   terms: {
     eyebrow: "DEVELOPER PLATFORM · TERMS",
-    title: "Developer Platform Terms",
+    title: "Terms",
     summary: "Terms for access to the PesaGuard developer workspace, APIs, credentials, and sandbox tools.",
     contactEmail: "legal@pesaguard.co.ke",
     sections: [
@@ -64,7 +64,7 @@ const documents: Record<DocumentKind, {
   },
   privacy: {
     eyebrow: "DEVELOPER PLATFORM · PRIVACY",
-    title: "Developer Platform Privacy",
+    title: "Privacy",
     summary: "How information is handled when you use the PesaGuard developer workspace, APIs, and related platform features.",
     contactEmail: "privacy@pesaguard.co.ke",
     sections: [
@@ -123,7 +123,7 @@ export function DeveloperLegalPage({ kind }: { kind: DocumentKind }) {
     <main className="developer-legal-page">
       <header className="developer-legal-header">
         <a className="developer-legal-brand" href="/" aria-label="PesaGuard Developer Platform home">
-          <img src="/pesaguard-icon.svg" alt="" width="30" height="33" />
+          <img src="/pesaguard-brand-mark.svg" alt="" width="34" height="36" />
           <span>PesaGuard</span>
         </a>
         <nav aria-label="Developer legal pages">

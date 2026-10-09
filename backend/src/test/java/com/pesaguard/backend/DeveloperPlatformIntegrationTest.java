@@ -42,6 +42,7 @@ import com.pesaguard.backend.organization.application.InvitationEmailDeliverySch
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
 class DeveloperPlatformIntegrationTest {
+    private static final String TEST_PASSWORD = "Ripple!Cedar-29";
 
     private static final String CREDENTIAL_KEY = base64("integration-credential-key-32-bytes!!");
     private static final String AUDIT_KEY = base64("integration-audit-key-32-bytes!!!!!!");
@@ -70,7 +71,7 @@ class DeveloperPlatformIntegrationTest {
         // the reason so the portal can offer resend rather than showing a generic failure.
         mockMvc.perform(post("/api/v1/auth/login")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"email\":\"" + email + "\",\"password\":\"correct horse battery staple\"}"))
+                        .content("{\"email\":\"" + email + "\",\"password\":\"" + TEST_PASSWORD + "\"}"))
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.error.code").value("EMAIL_NOT_VERIFIED"));
 
@@ -78,7 +79,7 @@ class DeveloperPlatformIntegrationTest {
 
         mockMvc.perform(post("/api/v1/auth/login")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"email\":\"" + email + "\",\"password\":\"correct horse battery staple\"}"))
+                        .content("{\"email\":\"" + email + "\",\"password\":\"" + TEST_PASSWORD + "\"}"))
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.error.code").value("LOGIN_EMAIL_MFA_REQUIRED"));
     }
@@ -87,13 +88,14 @@ class DeveloperPlatformIntegrationTest {
     void registrationAcceptsAndPersistsUsernameAndPhoneNumber() throws Exception {
         String email = uniqueEmail();
         String username = "developer" + UUID.randomUUID().toString().substring(0, 8).replaceAll("[0-9]", "a");
-        String password = "Ripple!Cedar-" + UUID.randomUUID();
+        String password = TEST_PASSWORD;
         String phoneNumber = "+254712345678";
 
         mockMvc.perform(post("/api/v1/auth/register")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"email\":\"" + email + "\",\"password\":\"" + password + "\","
-                                + "\"displayName\":\"Test User\",\"termsAccepted\":true,"
+                                + "\"displayName\":\"Test User\",\"organizationName\":\"Test Organization\","
+                                + "\"termsAccepted\":true,"
                                 + "\"username\":\"" + username + "\",\"phoneNumber\":\"" + phoneNumber + "\"}"))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.data.username").value(username));
@@ -104,13 +106,61 @@ class DeveloperPlatformIntegrationTest {
     }
 
     @Test
+    void registrationRejectsPhoneNumberAlreadyUsedByAnotherAccount() throws Exception {
+        String phoneNumber = "+2547" + String.format(java.util.Locale.ROOT, "%08d",
+                Math.floorMod(UUID.randomUUID().getLeastSignificantBits(), 100_000_000L));
+        String firstEmail = uniqueEmail();
+        String secondEmail = uniqueEmail();
+
+        mockMvc.perform(post("/api/v1/auth/register")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"email\":\"" + firstEmail + "\",\"password\":\"" + TEST_PASSWORD + "\","
+                                + "\"displayName\":\"Test User\",\"organizationName\":\"First Organization\","
+                                + "\"termsAccepted\":true,\"phoneNumber\":\"" + phoneNumber + "\"}"))
+                .andExpect(status().isCreated());
+
+        mockMvc.perform(post("/api/v1/auth/register")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"email\":\"" + secondEmail + "\",\"password\":\"" + TEST_PASSWORD + "\","
+                                + "\"displayName\":\"Test User\",\"organizationName\":\"Second Organization\","
+                                + "\"termsAccepted\":true,\"phoneNumber\":\"" + phoneNumber + "\"}"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.error.code").value("PHONE_ALREADY_REGISTERED"));
+    }
+
+    @Test
+    void registrationGeneratesInternalUsernameAndCreatesNamedOrganization() throws Exception {
+        String email = uniqueEmail();
+        String organizationName = "North Star Labs";
+        String response = mockMvc.perform(post("/api/v1/auth/register")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"email\":\"" + email + "\",\"password\":\"" + TEST_PASSWORD + "\","
+                                + "\"displayName\":\"Test User\",\"organizationName\":\"" + organizationName + "\","
+                                + "\"termsAccepted\":true}"))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.data.organizationName").value(organizationName))
+                .andExpect(jsonPath("$.data.username").value(org.hamcrest.Matchers.matchesRegex("dev[a-p]{22}")))
+                .andReturn().getResponse().getContentAsString();
+
+        String username = jsonValue(response, "username");
+        assertThat(jdbcTemplate.queryForObject(
+                "select username from users where email = ?", String.class, email))
+                .isEqualTo(username);
+        assertThat(jdbcTemplate.queryForObject(
+                "select name from organizations where id = (select organization_id from organization_memberships "
+                        + "where user_id = (select id from users where email = ?) limit 1)",
+                String.class, email))
+                .isEqualTo(organizationName);
+    }
+
+    @Test
     void emailVerificationAfterUnverifiedLoginCompletesInitialSession() throws Exception {
         String email = uniqueEmail();
         registerUnverified(email);
 
         mockMvc.perform(post("/api/v1/auth/login")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"email\":\"" + email + "\",\"password\":\"correct horse battery staple\"}"))
+                        .content("{\"email\":\"" + email + "\",\"password\":\"" + TEST_PASSWORD + "\"}"))
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.error.code").value("EMAIL_NOT_VERIFIED"));
 
@@ -118,7 +168,7 @@ class DeveloperPlatformIntegrationTest {
         String response = mockMvc.perform(post("/api/v1/auth/verify-email/complete-registration")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"email\":\"" + email + "\",\"code\":\"" + code
-                                + "\",\"password\":\"correct horse battery staple\"}"))
+                                + "\",\"password\":\"" + TEST_PASSWORD + "\"}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.accessToken").isNotEmpty())
                 .andExpect(jsonPath("$.data.refreshToken").isNotEmpty())
@@ -139,7 +189,7 @@ class DeveloperPlatformIntegrationTest {
         String response = mockMvc.perform(post("/api/v1/auth/verify-email/complete-registration")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"email\":\"" + email + "\",\"code\":\"" + code
-                                + "\",\"password\":\"correct horse battery staple\"}"))
+                                + "\",\"password\":\"" + TEST_PASSWORD + "\"}"))
                 .andExpect(status().isOk())
                 .andExpect(header().string("Cache-Control", "no-store"))
                 .andExpect(jsonPath("$.data.accessToken").isNotEmpty())
@@ -154,7 +204,7 @@ class DeveloperPlatformIntegrationTest {
 
         mockMvc.perform(post("/api/v1/auth/login")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"email\":\"" + email + "\",\"password\":\"correct horse battery staple\"}"))
+                        .content("{\"email\":\"" + email + "\",\"password\":\"" + TEST_PASSWORD + "\"}"))
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.error.code").value("LOGIN_EMAIL_MFA_REQUIRED"));
     }
@@ -258,7 +308,7 @@ class DeveloperPlatformIntegrationTest {
         mockMvc.perform(post("/api/v1/auth/login")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"email\":\"" + updatedUsername
-                                + "\",\"password\":\"correct horse battery staple\"}"))
+                                + "\",\"password\":\"" + TEST_PASSWORD + "\"}"))
                 .andExpect(status().isOk());
     }
 
@@ -489,7 +539,7 @@ class DeveloperPlatformIntegrationTest {
 
         mockMvc.perform(post("/api/v1/auth/login")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"email\":\"" + inviteeEmail + "\",\"password\":\"correct horse battery staple\"}"))
+                        .content("{\"email\":\"" + inviteeEmail + "\",\"password\":\"" + TEST_PASSWORD + "\"}"))
                 .andExpect(status().isUnauthorized());
     }
 
@@ -507,20 +557,20 @@ class DeveloperPlatformIntegrationTest {
 
         mockMvc.perform(post("/api/v1/auth/login")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"email\":\"" + email + "\",\"password\":\"correct horse battery staple\"}"))
+                        .content("{\"email\":\"" + email + "\",\"password\":\"" + TEST_PASSWORD + "\"}"))
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.error.code").value("LOGIN_EMAIL_MFA_REQUIRED"));
 
         mockMvc.perform(post("/api/v1/auth/login")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"email\":\"" + email + "\",\"password\":\"correct horse battery staple\","
+                        .content("{\"email\":\"" + email + "\",\"password\":\"" + TEST_PASSWORD + "\","
                                 + "\"organizationId\":\"" + secondOrganizationId + "\"}"))
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.error.code").value("LOGIN_EMAIL_MFA_REQUIRED"));
 
         mockMvc.perform(post("/api/v1/auth/login")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"email\":\"" + email + "\",\"password\":\"correct horse battery staple\","
+                        .content("{\"email\":\"" + email + "\",\"password\":\"" + TEST_PASSWORD + "\","
                                 + "\"organizationId\":\"" + firstOrganizationId + "\"}"))
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.error.code").value("LOGIN_EMAIL_MFA_REQUIRED"));
@@ -617,7 +667,7 @@ class DeveloperPlatformIntegrationTest {
         String organization = "Acme " + email.substring(0, email.indexOf('@'));
         String response = mockMvc.perform(post("/api/v1/auth/register")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"email\":\"" + email + "\",\"password\":\"correct horse battery staple\","
+                        .content("{\"email\":\"" + email + "\",\"password\":\"" + TEST_PASSWORD + "\","
                                 + "\"displayName\":\"Test User\",\"organizationName\":\"" + organization + "\","
                                 + "\"termsAccepted\":true}"))
                 .andExpect(status().isCreated())
@@ -631,7 +681,7 @@ class DeveloperPlatformIntegrationTest {
     private String login(String email) throws Exception {
         String challengeResponse = mockMvc.perform(post("/api/v1/auth/login")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"email\":\"" + email + "\",\"password\":\"correct horse battery staple\"}"))
+                        .content("{\"email\":\"" + email + "\",\"password\":\"" + TEST_PASSWORD + "\"}"))
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.error.code").value("LOGIN_EMAIL_MFA_REQUIRED"))
                 .andReturn().getResponse().getContentAsString();

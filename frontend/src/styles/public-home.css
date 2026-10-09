@@ -134,14 +134,14 @@
   display: inline-flex;
   flex: 0 0 auto;
   align-items: center;
-  gap: 7px;
+  gap: 3px;
   white-space: nowrap;
 }
 
 .public-home-brand > img {
   display: block;
-  width: 32px;
-  height: 35px;
+  width: 34px;
+  height: 36px;
   object-fit: contain;
 }
 
@@ -149,8 +149,8 @@
   display: inline-flex;
   color: #111c16;
   font-size: 21px;
-  font-weight: 700;
-  letter-spacing: -.025em;
+  font-weight: 800;
+  letter-spacing: -.045em;
 }
 
 .public-home-brand-wordmark > span:last-child {
@@ -196,11 +196,18 @@
   border-radius: 7px;
   font-size: 14px;
   font-weight: 650;
-  transition: background-color .18s ease, border-color .18s ease, color .18s ease, transform .18s ease;
+  transition: background-color .18s ease, border-color .18s ease, color .18s ease, transform .18s ease, box-shadow .18s ease;
 }
 
 .public-home-button:hover {
-  transform: translateY(-2px);
+  box-shadow: 0 7px 18px rgba(36, 89, 47, .18);
+  transform: translateY(-2px) scale(1.02);
+}
+
+.public-home-button:active,
+.hero-doc-link:active,
+.text-link:active {
+  transform: translateY(0) scale(.98);
 }
 
 .button-primary {
@@ -339,6 +346,8 @@
 .hero-doc-link:hover {
   background: #dff5e4;
   border-color: rgba(44, 179, 74, .48);
+  box-shadow: 0 5px 14px rgba(36, 89, 47, .1);
+  transform: translateY(-2px);
   transform: translateY(-2px);
 }
 

@@ -1,3 +1,4 @@
+import { AppError, getUserMessage } from "../../lib/errors";
 import { RefreshCw, Save } from "lucide-react";
 import { useEffect, useState } from "react";
 import { PageHeader } from "../../components/ui/PageHeader";
@@ -41,7 +42,7 @@ export function ProjectSettingsPage() {
         }
       })
       .catch((requestError: unknown) => {
-        if (!controller.signal.aborted) setError(requestError instanceof Error ? requestError.message : "Unable to load project settings.");
+        if (!controller.signal.aborted) setError(getUserMessage(requestError, "Unable to load project settings."));
       })
       .finally(() => {
         if (!controller.signal.aborted) setLoading(false);
@@ -55,11 +56,11 @@ export function ProjectSettingsPage() {
     try {
       const parsed: unknown = JSON.parse(settingsText);
       if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
-        throw new Error("Project settings must be a JSON object.");
+        throw new AppError("VALIDATION_ERROR", "Project settings must be a JSON object.");
       }
       nextSettings = Object.fromEntries(Object.entries(parsed));
     } catch (parseError) {
-      setError(parseError instanceof Error ? parseError.message : "Enter valid project settings.");
+      setError(getUserMessage(parseError, "Enter valid project settings."));
       return;
     }
 
@@ -75,7 +76,7 @@ export function ProjectSettingsPage() {
       setSettingsText(JSON.stringify(updated.settings, null, 2));
       setMessage("Project settings saved.");
     } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : "Project settings could not be saved.");
+      setError(getUserMessage(requestError, "Project settings could not be saved."));
     } finally {
       setSaving(false);
     }

@@ -1,3 +1,4 @@
+import { getUserMessage } from "../../lib/errors";
 import { useEffect, useState } from "react";
 import { Building2, RefreshCw } from "lucide-react";
 import type { PageId } from "../../app/routes";
@@ -25,7 +26,7 @@ export function OrganizationsPage({ onNavigate }: { onNavigate: (page: PageId) =
     try {
       setOrganization(await apiData<Organization>("/api/v1/organization"));
     } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : "Could not load the organization.");
+      setError(getUserMessage(requestError, "Could not load the organization."));
     } finally {
       setLoading(false);
     }

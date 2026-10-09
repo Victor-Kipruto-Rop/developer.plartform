@@ -19,6 +19,7 @@ import com.pesaguard.backend.organization.domain.Organization;
 import com.pesaguard.backend.organization.domain.OrganizationMembership;
 import com.pesaguard.backend.organization.domain.OrganizationMembershipHistory;
 import com.pesaguard.backend.organization.domain.OrganizationSecuritySettings;
+import com.pesaguard.backend.organization.application.OrganizationNamePolicy;
 import com.pesaguard.backend.organization.infrastructure.OrganizationMembershipHistoryRepository;
 import com.pesaguard.backend.organization.infrastructure.OrganizationMembershipRepository;
 import com.pesaguard.backend.organization.infrastructure.OrganizationRepository;
@@ -83,16 +84,16 @@ public class RegistrationService {
         if (userRepository.findByEmail(email).isPresent()) {
             throw new ResourceConflictException("EMAIL_ALREADY_REGISTERED", "An account already exists for this email.");
         }
-        String username = usernamePolicy.validate(request.username());
-        if (userRepository.existsByUsernameIgnoreCase(username)) {
-            throw new ResourceConflictException("USERNAME_ALREADY_TAKEN",
-                    "That username is already in use. Choose another one.");
+        if (request.phoneNumber() != null && userRepository.existsByPhoneNumber(request.phoneNumber())) {
+            throw new ResourceConflictException("PHONE_ALREADY_REGISTERED",
+                    "This phone number is already associated with an account.");
         }
+        String requestedOrganizationName = OrganizationNamePolicy.validate(request.organizationName());
+        String username = resolveUsername(request.username());
 
         UserAccount user = userRepository.saveAndFlush(
                 UserAccount.create(email, username, request.displayName().trim(),
                         passwordEncoder.encode(request.password()), request.phoneNumber()));
-        String requestedOrganizationName = resolveOrganizationName(request);
         String organizationSlug = uniqueSlug(requestedOrganizationName);
         Instant now = clock.instant();
         Organization organization = Organization.create(
@@ -132,16 +133,25 @@ public class RegistrationService {
                 challenge.expiresAt(), challenge.resendAvailableAt(), challenge.issuedAt(), user.getUsername());
     }
 
-    private String resolveOrganizationName(RegisterRequest request) {
-        String provided = request.organizationName() == null ? "" : request.organizationName().trim();
-        if (!provided.isBlank()) {
-            return provided;
+    private String resolveUsername(String requestedUsername) {
+        if (requestedUsername != null && !requestedUsername.isBlank()) {
+            String username = usernamePolicy.validate(requestedUsername);
+            if (userRepository.existsByUsernameIgnoreCase(username)) {
+                throw new ResourceConflictException("USERNAME_ALREADY_TAKEN",
+                        "That username is already in use. Choose another one.");
+            }
+            return username;
         }
-        String fallback = request.displayName() == null ? "" : request.displayName().trim();
-        if (!fallback.isBlank()) {
-            return fallback + " Workspace";
-        }
-        return "Developer Workspace";
+
+        String username;
+        do {
+            String alphabeticUuid = UUID.randomUUID().toString().replace("-", "")
+                    .replace('0', 'g').replace('1', 'h').replace('2', 'i').replace('3', 'j')
+                    .replace('4', 'k').replace('5', 'l').replace('6', 'm').replace('7', 'n')
+                    .replace('8', 'o').replace('9', 'p');
+            username = "dev" + alphabeticUuid.substring(0, 22);
+        } while (userRepository.existsByUsernameIgnoreCase(username));
+        return usernamePolicy.validate(username);
     }
 
     private String uniqueSlug(String organizationName) {

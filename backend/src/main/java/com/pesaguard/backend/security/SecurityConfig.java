@@ -63,6 +63,7 @@ public class SecurityConfig {
                                 "/api/v1/auth/login/email-mfa/resend",
                                 "/api/v1/auth/refresh", "/api/v1/auth/verify-email",
                                 "/api/v1/auth/verify-email/complete-registration",
+                                "/api/v1/auth/verify-email/complete-registration-link",
                                 "/api/v1/auth/verify-email/resend",
                                 "/api/v1/auth/forgot-password", "/api/v1/auth/reset-password",
                                 "/api/v1/auth/passkeys/login/**", "/api/v1/auth/passkeys/mfa/**",

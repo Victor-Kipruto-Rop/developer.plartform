@@ -6,6 +6,7 @@ import java.nio.charset.StandardCharsets;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.HttpStatus;
 import org.springframework.mail.MailException;
 import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.mail.javamail.MimeMessageHelper;
@@ -49,8 +50,8 @@ public class PasswordRecoveryDeliveryService {
             mailSender.send(message);
         } catch (MessagingException | MailException exception) {
             log.error("Password reset delivery failed ({})", exception.getClass().getSimpleName());
-            // Keep forgot-password responses indistinguishable for known and
-            // unknown addresses even when the mail transport is unavailable.
+            // The public response must remain indistinguishable for registered
+            // and unregistered addresses.
         }
     }
 

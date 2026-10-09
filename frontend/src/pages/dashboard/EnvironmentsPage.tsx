@@ -1,3 +1,5 @@
+import { ValidatedForm } from "../../components/forms/ValidatedForm";
+import { getUserMessage } from "../../lib/errors";
 import { ArrowRight, CloudCog, Plus, X } from "lucide-react";
 import { useEffect, useState, type FormEvent } from "react";
 import { PageHeader } from "../../components/ui/PageHeader";
@@ -66,7 +68,7 @@ export function EnvironmentsPage({ onNavigate }: { onNavigate: (page: "environme
         }
       })
       .catch((requestError: unknown) => {
-        if (!controller.signal.aborted) setLoadError(requestError instanceof Error ? requestError.message : "Unable to load environments.");
+        if (!controller.signal.aborted) setLoadError(getUserMessage(requestError, "Unable to load environments."));
       })
       .finally(() => {
         if (!controller.signal.aborted) setLoading(false);
@@ -122,7 +124,7 @@ export function EnvironmentsPage({ onNavigate }: { onNavigate: (page: "environme
       setReloadKey((current) => current + 1);
       setSelectedTemplate(null);
     } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : "Environment creation failed.");
+      setError(getUserMessage(requestError, "Environment creation failed."));
     } finally {
       setSaving(false);
     }
@@ -181,7 +183,7 @@ export function EnvironmentsPage({ onNavigate }: { onNavigate: (page: "environme
               </div>
               <button className="icon-button" type="button" aria-label="Close dialog" disabled={saving} onClick={() => setSelectedTemplate(null)}><X size={17} /></button>
             </div>
-            <form className="workflow-form" onSubmit={createEnvironment}>
+            <ValidatedForm className="workflow-form" onSubmit={createEnvironment}>
               <label>Project<select required value={projectId} onChange={(event) => changeProject(event.target.value)} disabled={loading || projects.length === 0}><option value="">{loading ? "Loading projects…" : "Select a project"}</option>{projects.map((project) => <option value={project.id} key={project.id}>{project.name}</option>)}</select></label>
               <label>Environment tier<select required value={selectedTemplate.type} onChange={(event) => {
                 const template = environmentTemplates.find((candidate) => candidate.type === event.target.value);
@@ -199,7 +201,7 @@ export function EnvironmentsPage({ onNavigate }: { onNavigate: (page: "environme
               <p className="workflow-hint">{selectedTemplate.type === "PRODUCTION" ? "Production uses live traffic. Confirm your project, scopes, and key restrictions before integration." : "This environment will be created for the selected project."}</p>
               {error && <p className="workflow-error" role="alert">{error}</p>}
               <div className="workflow-form-actions"><button className="button button--secondary" type="button" disabled={saving} onClick={() => setSelectedTemplate(null)}>Cancel</button><button className="button button--primary" type="submit" disabled={saving || !projectId || environmentName.trim().length < 2 || projectHasEnvironmentType(selectedTemplate.type)}><Plus size={15} />{saving ? "Creating…" : "Create environment"}</button></div>
-            </form>
+            </ValidatedForm>
           </section>
         </div>
       )}

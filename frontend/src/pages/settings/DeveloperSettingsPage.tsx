@@ -1,3 +1,4 @@
+import { getUserMessage } from "../../lib/errors";
 import { ArrowRight, Check, Code2, KeyRound, LoaderCircle, Network, Save } from "lucide-react";
 import { useEffect, useState } from "react";
 import type { PageId } from "../../app/routes";
@@ -16,7 +17,7 @@ export function DeveloperSettingsPage({ onNavigate }: { onNavigate: (page: PageI
     apiData<{ requestTimeoutMs: number; retryCount: number }>("/api/v1/developer/preferences")
       .then((result) => { if (active) setPreferences(result); })
       .catch((cause: unknown) => {
-        if (active) setError(cause instanceof Error ? cause.message : "Unable to load developer preferences.");
+        if (active) setError(getUserMessage(cause, "Unable to load developer preferences."));
       })
       .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
@@ -35,7 +36,7 @@ export function DeveloperSettingsPage({ onNavigate }: { onNavigate: (page: PageI
       setPreferences(result);
       setSaved(true);
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Unable to save developer preferences.");
+      setError(getUserMessage(cause, "Unable to save developer preferences."));
     } finally {
       setSaving(false);
     }

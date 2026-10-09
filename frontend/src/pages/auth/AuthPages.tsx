@@ -1,10 +1,11 @@
+import { getUserMessage } from "../../lib/errors";
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { ArrowRight, Check, Eye, EyeOff, KeyRound, LoaderCircle, ShieldCheck, UserRoundPlus, X } from "lucide-react";
 import { getCountries, getCountryCallingCode, parsePhoneNumberFromString, type CountryCode } from "libphonenumber-js";
 import { ApiError } from "../../lib/api";
 import * as authApi from "../../lib/authApi";
-import { usernameValidationMessage } from "../../lib/usernameValidation";
 import { useAuth } from "../../context/AuthContext";
+import { organizationNameValidationMessage } from "../../lib/organizationNameValidation";
 import type { LoginEmailMfaChallenge } from "../../types/auth";
 import "../../styles/auth-pages.css";
 
@@ -14,6 +15,79 @@ type AuthPageProps = {
   mode: "login" | "register";
   initialView?: AuthView;
 };
+
+function SixDigitCodeInput({
+  label,
+  digits,
+  onChange,
+  disabled,
+  invalid = false,
+}: {
+  label: string;
+  digits: string[];
+  onChange: (digits: string[]) => void;
+  disabled: boolean;
+  invalid?: boolean;
+}) {
+  const inputRefs = useRef<Array<HTMLInputElement | null>>([]);
+
+  function distributeDigits(value: string) {
+    const cleanDigits = value.replace(/\D/g, "").slice(0, 6);
+    onChange(Array.from({ length: 6 }, (_, index) => cleanDigits[index] ?? ""));
+    inputRefs.current[Math.min(cleanDigits.length, 5)]?.focus();
+  }
+
+  return (
+    <fieldset className={`public-auth-code-field${invalid ? " is-invalid" : ""}`} disabled={disabled}>
+      <legend>{label}</legend>
+      <div className="public-auth-code-inputs" role="group" aria-label={label}>
+        {Array.from({ length: 6 }, (_, index) => (
+          <input
+            key={index}
+            ref={(element) => { inputRefs.current[index] = element; }}
+            aria-label={`${label}, digit ${index + 1} of 6`}
+            aria-invalid={invalid || undefined}
+            autoComplete={index === 0 ? "one-time-code" : "off"}
+            autoFocus={index === 0}
+            inputMode="numeric"
+            pattern="[0-9]*"
+            maxLength={6}
+            required
+            value={digits[index] ?? ""}
+            onChange={(event) => {
+              const entered = event.currentTarget.value.replace(/\D/g, "");
+              if (entered.length > 1) {
+                distributeDigits(entered);
+                return;
+              }
+              const nextDigits = Array.from({ length: 6 }, (_, digitIndex) => digits[digitIndex] ?? "");
+              nextDigits[index] = entered;
+              onChange(nextDigits);
+              if (entered && index < 5) inputRefs.current[index + 1]?.focus();
+            }}
+            onPaste={(event) => {
+              const pasted = event.clipboardData.getData("text").replace(/\D/g, "");
+              if (!pasted) return;
+              event.preventDefault();
+              distributeDigits(pasted);
+            }}
+            onKeyDown={(event) => {
+              if (event.key === "ArrowLeft" && index > 0) {
+                event.preventDefault();
+                inputRefs.current[index - 1]?.focus();
+              } else if (event.key === "ArrowRight" && index < 5) {
+                event.preventDefault();
+                inputRefs.current[index + 1]?.focus();
+              } else if (event.key === "Backspace" && !digits[index] && index > 0) {
+                inputRefs.current[index - 1]?.focus();
+              }
+            }}
+          />
+        ))}
+      </div>
+    </fieldset>
+  );
+}
 
 const countryNames = new Intl.DisplayNames(["en"], { type: "region" });
 const phoneCountries = getCountries()
@@ -31,6 +105,7 @@ const phoneCountries = getCountries()
 function AuthFrame({
   mode,
   loginLanding,
+  emailMfa,
   flowView,
   flowFooterInsideLayout,
   flowFooterAfterPanel,
@@ -43,6 +118,7 @@ function AuthFrame({
 }: {
   mode: "login" | "register";
   loginLanding?: boolean;
+  emailMfa?: boolean;
   flowView?: boolean;
   flowFooterInsideLayout?: boolean;
   flowFooterAfterPanel?: ReactNode;
@@ -56,6 +132,7 @@ function AuthFrame({
   const authClassName = [
     "public-auth",
     loginLanding && "public-auth--login",
+    emailMfa && "public-auth--email-mfa",
     mode === "register" && "public-auth--register",
     flowView && "public-auth--flow",
     flowFooterInsideLayout && "public-auth--recovery",
@@ -66,12 +143,7 @@ function AuthFrame({
     <main className={authClassName}>
       <header className="public-auth-header">
         <a className="public-auth-brand" href="/" aria-label="PesaGuard home">
-          {loginLanding
-            ? <svg className="public-auth-brand-icon" viewBox="0 0 48 48" fill="none" aria-hidden="true">
-                <path d="M24 4 39 10v3.8M39 20.2V23c0 10-6.1 16.7-15 21C15.1 39.7 9 33 9 23V10l15-6" />
-                <path d="m17.5 23 4.2 4.1 8.8-9.2" />
-              </svg>
-            : <img src="/pesaguard-icon.svg" alt="" aria-hidden="true" />}
+          <img src="/pesaguard-brand-mark.svg" alt="" aria-hidden="true" />
           <span className="public-auth-brand-wordmark"><span>Pesa</span><span>Guard</span></span>
         </a>
         {!loginLanding && !flowView && <div className="public-auth-header-link">
@@ -81,13 +153,14 @@ function AuthFrame({
       <div className="public-auth-layout">
         <section className={`public-auth-panel${loginLanding ? " public-auth-panel--login" : ""}`} aria-labelledby="public-auth-title">
           <div className="public-auth-panel-heading">
-            <span className={`public-auth-panel-icon${loginLanding ? " public-auth-panel-icon--animated" : ""}${loginFailed ? " is-auth-failed" : ""}`}>
-              {loginLanding
-                ? <KeyRound size={40} strokeWidth={1.5} aria-hidden="true" />
+            <span className={`public-auth-panel-icon${loginLanding || passwordReset ? " public-auth-panel-icon--animated" : ""}${loginFailed ? " is-auth-failed" : ""}`}>
+              {passwordReset
+                ? <img className="public-auth-noun-icon" src="/icons/reset-password-vectors-point.png" alt="" aria-hidden="true" />
                 : mode === "register"
                   ? <UserRoundPlus size={32} strokeWidth={1.6} aria-hidden="true" />
                   : <KeyRound size={23} strokeWidth={1.7} aria-hidden="true" />}
             </span>
+            {passwordReset && <a className="public-auth-icon-credit" href="https://thenounproject.com/icon/reset-password-3728048/" target="_blank" rel="noreferrer">Reset Password by Vectors Point · CC BY 3.0</a>}
             {!loginLanding && <span className="public-auth-eyebrow">{mode === "register" ? "CREATE YOUR ACCOUNT" : "SECURE SIGN IN"}</span>}
             <h2 id="public-auth-title">{title === "Sign up" ? <><span>Sign</span> <span>Up</span></> : title}</h2>
             <p>{subtitle}</p>
@@ -128,6 +201,7 @@ function AuthPage({ mode, initialView = mode }: AuthPageProps) {
     login,
     register,
     completeRegistrationVerification,
+    completeRegistrationVerificationByLink,
     verifyLoginEmailMfa,
     resendLoginEmailMfa,
     status,
@@ -135,8 +209,8 @@ function AuthPage({ mode, initialView = mode }: AuthPageProps) {
   } = useAuth();
   const [view, setView] = useState<AuthView>(initialView);
   const [email, setEmail] = useState("");
-  const [username, setUsername] = useState("");
-  const [usernameTouched, setUsernameTouched] = useState(false);
+  const [organizationName, setOrganizationName] = useState("");
+  const [organizationNameTouched, setOrganizationNameTouched] = useState(false);
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
   const [phoneCountry, setPhoneCountry] = useState<CountryCode>("KE");
@@ -146,9 +220,18 @@ function AuthPage({ mode, initialView = mode }: AuthPageProps) {
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [authFailed, setAuthFailed] = useState(false);
   const [loginAttempted, setLoginAttempted] = useState(false);
+  const [identifierTouched, setIdentifierTouched] = useState(false);
+  const [passwordTouched, setPasswordTouched] = useState(false);
+  const [registrationAttempted, setRegistrationAttempted] = useState(false);
+  const [validationAttempted, setValidationAttempted] = useState(false);
   const [confirmPassword, setConfirmPassword] = useState("");
   const [acceptedTerms, setAcceptedTerms] = useState(false);
-  const [code, setCode] = useState("");
+  const [codeDigits, setCodeDigits] = useState<string[]>(() => Array.from({ length: 6 }, () => ""));
+  const code = codeDigits.join("");
+  function setCode(value: string) {
+    const cleanDigits = value.replace(/\D/g, "").slice(0, 6);
+    setCodeDigits(Array.from({ length: 6 }, (_, index) => cleanDigits[index] ?? ""));
+  }
   const [resetToken] = useState(() => {
     const query = new URLSearchParams(window.location.search);
     const resetFragment = window.location.hash.slice(1);
@@ -168,13 +251,24 @@ function AuthPage({ mode, initialView = mode }: AuthPageProps) {
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
-  const [successDialog, setSuccessDialog] = useState<"request" | "changed" | null>(null);
+  const [successDialog, setSuccessDialog] = useState<"changed" | null>(null);
   const [resendAvailableAt, setResendAvailableAt] = useState<number | null>(null);
   const [now, setNow] = useState(Date.now());
-  const usernameError = usernameTouched ? usernameValidationMessage(username, email) : null;
+  const organizationError = organizationNameTouched ? organizationNameValidationMessage(organizationName) : null;
   const verificationStarted = useRef(false);
   const successActionRef = useRef<HTMLButtonElement | HTMLAnchorElement>(null);
   const resendSeconds = resendAvailableAt === null ? 0 : Math.max(0, Math.ceil((resendAvailableAt - now) / 1000));
+  const isEmailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
+  const phoneIsValid = Boolean(parsePhoneNumberFromString(phoneNumber, phoneCountry)?.isValid());
+  const forgotEmailError = validationAttempted
+    ? !email.trim() ? "Please enter your email address."
+      : !isEmailValid ? "Enter a valid email address."
+        : null
+    : null;
+  const resetPasswordError = validationAttempted && !password ? "Please enter a new password." : null;
+  const resetConfirmationError = validationAttempted && !confirmPassword
+    ? "Please confirm your new password."
+    : validationAttempted && password !== confirmPassword ? "Passwords do not match." : null;
 
   useEffect(() => {
     if (!successDialog) return;
@@ -184,9 +278,7 @@ function AuthPage({ mode, initialView = mode }: AuthPageProps) {
     successActionRef.current?.focus();
 
     function handleDialogKeys(event: KeyboardEvent) {
-      if (event.key === "Escape" && successDialog === "request") {
-        setSuccessDialog(null);
-      } else if (event.key === "Tab") {
+      if (event.key === "Tab") {
         event.preventDefault();
         successActionRef.current?.focus();
       }
@@ -216,19 +308,13 @@ function AuthPage({ mode, initialView = mode }: AuthPageProps) {
     verificationStarted.current = true;
     setBusy(true);
     setError("");
-    void authApi.verifyEmail(verificationToken)
-      .then(() => {
-        setMessage("Your email is verified. Sign in to continue.");
-        setView("login");
-        window.history.replaceState(window.history.state, "", window.location.pathname);
-      })
+    void completeRegistrationVerificationByLink(verificationToken)
+      .then(() => setMessage("Your email is verified. Opening your dashboard…"))
       .catch((verificationError: unknown) => {
-        setError(verificationError instanceof Error
-          ? verificationError.message
-          : "This verification link is invalid or has expired.");
+        setError(getUserMessage(verificationError, "This verification link is invalid or has expired."));
       })
       .finally(() => setBusy(false));
-  }, [verificationToken, view]);
+  }, [completeRegistrationVerificationByLink, verificationToken, view]);
 
   useEffect(() => {
     if (resendAvailableAt === null) return;
@@ -241,21 +327,20 @@ function AuthPage({ mode, initialView = mode }: AuthPageProps) {
     setError("");
     setMessage("");
     setCode("");
+    setValidationAttempted(false);
+    setLoginAttempted(false);
+    setIdentifierTouched(false);
+    setPasswordTouched(false);
+    setRegistrationAttempted(false);
   }
 
   async function submitLogin(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setLoginAttempted(true);
+    setValidationAttempted(true);
     setError("");
     setAuthFailed(false);
-    if (!email.trim()) {
-      setError("Please enter your email address.");
-      return;
-    }
-    if (!password) {
-      setError("Please enter your password.");
-      return;
-    }
+    if (!email.trim() || !password) return;
     setBusy(true);
     try {
       await login(email.trim(), password);
@@ -265,27 +350,31 @@ function AuthPage({ mode, initialView = mode }: AuthPageProps) {
         try {
           setEnrollmentToken(loginError.mfaEnrollmentToken);
           setEnrollment(await authApi.beginMfaEnrollmentChallenge(loginError.mfaEnrollmentToken));
+          setValidationAttempted(false);
+          setLoginAttempted(false);
           setView("enroll-mfa");
         } catch (enrollmentError) {
           setEnrollmentToken("");
-          setError(enrollmentError instanceof Error ? enrollmentError.message : "Authenticator setup could not be started.");
+          setError(getUserMessage(enrollmentError, "Authenticator setup could not be started."));
         }
       } else if (loginError instanceof ApiError && loginError.code === "EMAIL_NOT_VERIFIED") {
         setEmail(loginError.verificationEmail || email.trim());
         setResendAvailableAt(loginError.verificationResendAvailableAt
           ? Date.parse(loginError.verificationResendAvailableAt)
           : null);
+        setValidationAttempted(false);
+        setLoginAttempted(false);
         setView("verify");
       } else if (!(loginError instanceof ApiError && loginError.code === "LOGIN_EMAIL_MFA_REQUIRED")) {
         if (loginError instanceof ApiError
           && (loginError.code === "INVALID_CREDENTIALS" || loginError.code === "LOGIN_FAILED" || loginError.status === 401)) {
           setAuthFailed(true);
-          setError("Invalid email, username, or password.");
+          setError("Invalid email or password.");
           if (typeof navigator !== "undefined" && "vibrate" in navigator) {
             navigator.vibrate([60, 35, 60]);
           }
         } else {
-          setError(loginError instanceof Error ? loginError.message : "Sign in failed. Please try again.");
+          setError(getUserMessage(loginError, "Sign in failed. Please try again."));
         }
       }
     } finally {
@@ -295,26 +384,16 @@ function AuthPage({ mode, initialView = mode }: AuthPageProps) {
 
   async function submitRegistration(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    setRegistrationAttempted(true);
+    setValidationAttempted(true);
     setError("");
-    const usernameValidationError = usernameValidationMessage(username, email);
-    setUsernameTouched(true);
-    if (usernameValidationError) {
-      setError(usernameValidationError);
-      return;
-    }
-    if (password !== confirmPassword) {
-      setError("Passwords do not match.");
-      return;
-    }
-    if (!acceptedTerms) {
-      setError("Accept the terms to create an account.");
-      return;
-    }
+    const organizationValidationError = organizationNameValidationMessage(organizationName);
+    setOrganizationNameTouched(true);
+    if (!firstName.trim() || !lastName.trim() || !isEmailValid || !password
+      || !confirmPassword || organizationValidationError || password !== confirmPassword
+      || !acceptedTerms) return;
     const parsedPhoneNumber = parsePhoneNumberFromString(phoneNumber, phoneCountry);
-    if (!parsedPhoneNumber?.isValid()) {
-      setError("Enter a valid phone number for the selected country.");
-      return;
-    }
+    if (!parsedPhoneNumber?.isValid()) return;
     setBusy(true);
     try {
       const displayName = `${firstName.trim()} ${lastName.trim()}`.trim();
@@ -322,25 +401,31 @@ function AuthPage({ mode, initialView = mode }: AuthPageProps) {
         email.trim(),
         password,
         displayName,
-        undefined,
+        organizationName.trim(),
         undefined,
         acceptedTerms,
-        username,
+        undefined,
         parsedPhoneNumber.number,
       );
       setEmail(result.email);
       if (result.verificationRequired) {
         setResendAvailableAt(result.verificationResendAvailableAt ? Date.parse(result.verificationResendAvailableAt) : null);
-        setMessage(`Enter the verification code sent to ${result.email}. Sign in with ${result.username || username}.`);
+        setMessage(`Enter the verification code sent to ${result.email} to finish creating ${result.organizationName || organizationName.trim()}.`);
+        setValidationAttempted(false);
+        setRegistrationAttempted(false);
         setView("verify");
       } else {
-        setMessage("Your account has been created. Sign in to continue.");
+        setMessage(`${result.organizationName || organizationName.trim()} is ready. Sign in to continue.`);
         setPassword("");
         setConfirmPassword("");
+        setValidationAttempted(false);
+        setRegistrationAttempted(false);
         setView("login");
       }
     } catch (registrationError) {
-      setError(registrationError instanceof Error ? registrationError.message : "Registration failed. Please try again.");
+      setError(registrationError instanceof ApiError && registrationError.code === "USERNAME_REQUIRED"
+        ? "Enter an organization name to create your account."
+        : getUserMessage(registrationError, "Registration failed. Please try again."));
     } finally {
       setBusy(false);
     }
@@ -348,10 +433,8 @@ function AuthPage({ mode, initialView = mode }: AuthPageProps) {
 
   async function submitVerification(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!/^\d{6}$/.test(code)) {
-      setError("Enter the six-digit code from your email.");
-      return;
-    }
+    setValidationAttempted(true);
+    if (!isEmailValid || !/^\d{6}$/.test(code)) return;
     setBusy(true);
     setError("");
     try {
@@ -363,7 +446,7 @@ function AuthPage({ mode, initialView = mode }: AuthPageProps) {
         setView("login");
       }
     } catch (verificationError) {
-      setError(verificationError instanceof Error ? verificationError.message : "Email verification failed. Try again or request a new code.");
+      setError(getUserMessage(verificationError, "Email verification failed. Try again or request a new code."));
     } finally {
       setBusy(false);
     }
@@ -371,16 +454,14 @@ function AuthPage({ mode, initialView = mode }: AuthPageProps) {
 
   async function submitEmailMfa(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!loginMfaChallenge || !/^\d{6}$/.test(code)) {
-      setError("Enter the six-digit sign-in code.");
-      return;
-    }
+    setValidationAttempted(true);
+    if (!loginMfaChallenge || !/^\d{6}$/.test(code)) return;
     setBusy(true);
     setError("");
     try {
       await verifyLoginEmailMfa(loginMfaChallenge.challengeId, code);
     } catch (verificationError) {
-      setError(verificationError instanceof Error ? verificationError.message : "The sign-in code could not be verified.");
+      setError(getUserMessage(verificationError, "The sign-in code could not be verified."));
       setCode("");
     } finally {
       setBusy(false);
@@ -402,7 +483,7 @@ function AuthPage({ mode, initialView = mode }: AuthPageProps) {
         setMessage("If the address can receive a code, a new verification email is on its way.");
       }
     } catch (resendError) {
-      setError(resendError instanceof Error ? resendError.message : "A new code could not be sent.");
+      setError(getUserMessage(resendError, "A new code could not be sent."));
     } finally {
       setBusy(false);
     }
@@ -410,14 +491,18 @@ function AuthPage({ mode, initialView = mode }: AuthPageProps) {
 
   async function submitForgotPassword(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    setValidationAttempted(true);
+    if (!isEmailValid) return;
     setBusy(true);
     setError("");
     setMessage("");
     try {
       await authApi.forgotPassword({ email: email.trim() });
-      setSuccessDialog("request");
+      setMessage(
+        "If an account matches this email, a password reset link is on the way. Check your inbox and spam folder.",
+      );
     } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : "Password recovery could not be started.");
+      setError(getUserMessage(requestError, "Password recovery could not be started."));
     } finally {
       setBusy(false);
     }
@@ -425,14 +510,12 @@ function AuthPage({ mode, initialView = mode }: AuthPageProps) {
 
   async function submitPasswordReset(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    setValidationAttempted(true);
     if (!resetToken) {
       setError("This password reset link is missing its token. Request a new reset email.");
       return;
     }
-    if (password !== confirmPassword) {
-      setError("Passwords do not match.");
-      return;
-    }
+    if (!password || !confirmPassword || password !== confirmPassword) return;
     setBusy(true);
     setError("");
     setMessage("");
@@ -442,7 +525,7 @@ function AuthPage({ mode, initialView = mode }: AuthPageProps) {
       setConfirmPassword("");
       setSuccessDialog("changed");
     } catch (resetError) {
-      setError(resetError instanceof Error ? resetError.message : "Password reset failed. Request a new reset link.");
+      setError(getUserMessage(resetError, "Password reset failed. Request a new reset link."));
     } finally {
       setBusy(false);
     }
@@ -450,10 +533,12 @@ function AuthPage({ mode, initialView = mode }: AuthPageProps) {
 
   async function submitEnrollment(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!enrollmentToken || !/^\d{6}$/.test(code)) {
+    setValidationAttempted(true);
+    if (!enrollmentToken) {
       setError("Enter the six-digit code from your authenticator app.");
       return;
     }
+    if (!/^\d{6}$/.test(code)) return;
     setBusy(true);
     setError("");
     try {
@@ -463,7 +548,7 @@ function AuthPage({ mode, initialView = mode }: AuthPageProps) {
       setEnrollment(null);
       setCode("");
     } catch (enrollmentError) {
-      setError(enrollmentError instanceof Error ? enrollmentError.message : "The authenticator code could not be verified.");
+      setError(getUserMessage(enrollmentError, "The authenticator code could not be verified."));
     } finally {
       setBusy(false);
     }
@@ -474,20 +559,18 @@ function AuthPage({ mode, initialView = mode }: AuthPageProps) {
     login: "Welcome back",
     register: "Sign up",
     verify: "Verify your email",
-    "email-mfa": "Confirm it’s you",
+    "email-mfa": "OTP Verification",
     forgot: "Reset your password",
     reset: "Change Password",
     "enroll-mfa": recoveryCodes.length ? "Save your recovery codes" : "Set up an authenticator",
     locked: "Verification temporarily locked",
   }[view];
   const subtitle = {
-    login: "Use your email address or username and password to sign in.",
-    register: "Enter your details to sign up.",
+    login: "Use your email address and password to sign in.",
+    register: "Create your developer account and organization.",
     verify: `Enter the six-digit code sent to ${email || "your email address"}.`,
-    "email-mfa": challenge?.kind === "email_mfa_required"
-      ? `A sign-in code was sent to ${loginMfaChallenge?.maskedEmail ?? challenge.challenge.maskedEmail}.`
-      : "Enter the sign-in code sent to your email.",
-    forgot: "We’ll send password reset instructions if an account matches that email.",
+    "email-mfa": `We sent a One Time Password to ${loginMfaChallenge?.maskedEmail ?? (challenge?.kind === "email_mfa_required" ? challenge.challenge.maskedEmail : "your email address")}.`,
+    forgot: "Enter the email address you used to register. We’ll send a password reset link if it matches an account.",
     reset: "We are very cautious about protecting your information. Please reset your password below.",
     "enroll-mfa": recoveryCodes.length
       ? "Store these codes somewhere safe. Each code can only be used once."
@@ -505,57 +588,64 @@ function AuthPage({ mode, initialView = mode }: AuthPageProps) {
   let form: ReactNode;
   if (view === "login") {
     const identifierIsReady = Boolean(email.trim() && password);
-    const identifierInvalid = (loginAttempted && !email.trim()) || authFailed;
-    form = <form className={`public-auth-form public-auth-login-form${authFailed ? " is-auth-failed" : ""}`} onSubmit={(event) => void submitLogin(event)} aria-busy={busy}>
+    const identifierInvalid = ((loginAttempted || identifierTouched) && !email.trim()) || authFailed;
+    const passwordInvalid = ((loginAttempted || passwordTouched) && !password) || authFailed;
+    form = <form className={`public-auth-form public-auth-login-form${authFailed ? " is-auth-failed" : ""}`} onSubmit={(event) => void submitLogin(event)} aria-busy={busy} noValidate>
       {alertContent()}
       <label className="public-auth-login-label">
-        <span>Email address or username</span>
+        <span>Email or username</span>
         <span className={`public-auth-input-wrap public-auth-identifier-wrap${identifierIsReady ? " is-ready" : ""}${identifierInvalid ? " is-invalid" : ""}`}>
-          <input autoComplete="username" type="text" name="email" placeholder="Email address or username" value={email} onChange={(event) => { setEmail(event.target.value); setAuthFailed(false); setError(""); }} aria-invalid={identifierInvalid || undefined} />
-          {email && <button className="public-auth-input-action" type="button" aria-label="Clear email address or username" onClick={() => { setEmail(""); setAuthFailed(false); setError(""); }}><X size={17} aria-hidden="true" /></button>}
+          <input autoComplete="username" type="text" name="email" placeholder="Email or username" value={email} onBlur={() => setIdentifierTouched(true)} onChange={(event) => { setEmail(event.target.value); setAuthFailed(false); setError(""); }} aria-invalid={identifierInvalid || undefined} aria-describedby={identifierInvalid && !authFailed ? "public-login-identifier-error" : undefined} />
+          {email && <button className="public-auth-input-action" type="button" aria-label="Clear email or username" onClick={() => { setEmail(""); setAuthFailed(false); setError(""); }}><X size={17} aria-hidden="true" /></button>}
           <span className="public-auth-input-line" aria-hidden="true" />
         </span>
+        {identifierInvalid && !authFailed && <small className="public-auth-field-error" id="public-login-identifier-error" role="alert">Please enter your email or username</small>}
       </label>
       <label className="public-auth-login-label">
         <span>Password</span>
-        <span className={`public-auth-input-wrap${authFailed ? " is-invalid" : ""}`}>
-          <input autoComplete="current-password" type={showPassword ? "text" : "password"} name="password" placeholder="Password" value={password} onChange={(event) => { setPassword(event.target.value); setAuthFailed(false); setError(""); }} aria-invalid={authFailed || undefined} />
+        <span className={`public-auth-input-wrap${passwordInvalid ? " is-invalid" : ""}`}>
+          <input autoComplete="current-password" type={showPassword ? "text" : "password"} name="password" placeholder="Password" value={password} onBlur={() => setPasswordTouched(true)} onChange={(event) => { setPassword(event.target.value); setAuthFailed(false); setError(""); }} aria-invalid={passwordInvalid || undefined} aria-describedby={passwordInvalid && !authFailed ? "public-login-password-error" : undefined} />
           <button className="public-auth-input-action" type="button" aria-label={showPassword ? "Hide password" : "Show password"} aria-pressed={showPassword} onClick={() => setShowPassword((shown) => !shown)}>
             {showPassword ? <EyeOff size={17} aria-hidden="true" /> : <Eye size={17} aria-hidden="true" />}
           </button>
           <span className="public-auth-input-line" aria-hidden="true" />
         </span>
+        {passwordInvalid && !authFailed && <small className="public-auth-field-error" id="public-login-password-error" role="alert">Please enter your password</small>}
       </label>
-      <button className="public-auth-submit" type="submit" disabled={busy || status === "authenticating"}>
+      <button className="public-auth-submit" type="submit" disabled={busy || status === "authenticating" || !identifierIsReady}>
         {busy ? <><LoaderCircle className="public-auth-spinner" size={17} aria-hidden="true" /> Signing in…</> : "Login"}
       </button>
       <p className="public-auth-login-forgot"><a href="/forgot-password">Forgot your password?</a></p>
       <p className="public-auth-switch">Don't have an account yet? <a href="/register">Sign up</a></p>
     </form>;
   } else if (view === "register") {
-    form = <form className="public-auth-form public-auth-register-form" onSubmit={(event) => void submitRegistration(event)} aria-busy={busy}>
+    form = <form className="public-auth-form public-auth-register-form" onSubmit={(event) => void submitRegistration(event)} aria-busy={busy} noValidate>
       {alertContent()}
       <div className="public-auth-register-grid">
         <label className="public-auth-register-field">First name
-          <span className="public-auth-register-input-wrap"><input autoComplete="given-name" name="given-name" required value={firstName} onChange={(event) => setFirstName(event.target.value)} placeholder="First name" />
+          <span className="public-auth-register-input-wrap"><input autoComplete="given-name" name="given-name" required value={firstName} onChange={(event) => setFirstName(event.target.value)} placeholder="First name" aria-invalid={registrationAttempted && !firstName.trim() || undefined} />
             {firstName && <button type="button" aria-label="Clear first name" onClick={() => setFirstName("")}><X size={16} aria-hidden="true" /></button>}
           </span>
+          {registrationAttempted && !firstName.trim() && <small className="public-auth-field-error" role="alert">Please enter your first name.</small>}
         </label>
         <label className="public-auth-register-field">Last name
-          <span className="public-auth-register-input-wrap"><input autoComplete="family-name" name="family-name" required value={lastName} onChange={(event) => setLastName(event.target.value)} placeholder="Last name" />
+          <span className="public-auth-register-input-wrap"><input autoComplete="family-name" name="family-name" required value={lastName} onChange={(event) => setLastName(event.target.value)} placeholder="Last name" aria-invalid={registrationAttempted && !lastName.trim() || undefined} />
             {lastName && <button type="button" aria-label="Clear last name" onClick={() => setLastName("")}><X size={16} aria-hidden="true" /></button>}
           </span>
+          {registrationAttempted && !lastName.trim() && <small className="public-auth-field-error" role="alert">Please enter your last name.</small>}
         </label>
         <label className="public-auth-register-field">Email address
-          <span className="public-auth-register-input-wrap"><input autoComplete="email" type="email" name="email" required value={email} onChange={(event) => setEmail(event.target.value)} placeholder="Email address" />
+          <span className="public-auth-register-input-wrap"><input autoComplete="email" type="email" name="email" required value={email} onChange={(event) => setEmail(event.target.value)} placeholder="Email address" aria-invalid={registrationAttempted && !isEmailValid || undefined} />
             {email && <button type="button" aria-label="Clear email address" onClick={() => setEmail("")}><X size={16} aria-hidden="true" /></button>}
           </span>
+          {registrationAttempted && !email.trim() && <small className="public-auth-field-error" role="alert">Please enter your email address.</small>}
+          {registrationAttempted && email.trim() && !isEmailValid && <small className="public-auth-field-error" role="alert">Enter a valid email address.</small>}
         </label>
-        <label className="public-auth-register-field">Username
-          <span className="public-auth-register-input-wrap"><input autoComplete="username" type="text" name="username" value={username} onBlur={() => setUsernameTouched(true)} onChange={(event) => { setUsername(event.target.value); setUsernameTouched(true); setError(""); }} aria-invalid={Boolean(usernameError) || undefined} aria-describedby={usernameError ? "public-register-username-error" : undefined} placeholder="Choose a username" />
-            {username && <button type="button" aria-label="Clear username" onClick={() => { setUsername(""); setUsernameTouched(true); setError(""); }}><X size={16} aria-hidden="true" /></button>}
+        <label className="public-auth-register-field">Organization name
+          <span className="public-auth-register-input-wrap"><input autoComplete="organization" type="text" name="organizationName" required maxLength={120} value={organizationName} onBlur={() => setOrganizationNameTouched(true)} onChange={(event) => { setOrganizationName(event.target.value); setOrganizationNameTouched(true); setError(""); }} aria-invalid={Boolean(organizationError) || undefined} aria-describedby={organizationError ? "public-register-organization-error" : undefined} placeholder="Organization name" />
+            {organizationName && <button type="button" aria-label="Clear organization name" onClick={() => { setOrganizationName(""); setOrganizationNameTouched(true); setError(""); }}><X size={16} aria-hidden="true" /></button>}
           </span>
-          {usernameError && <small className="public-auth-field-error" id="public-register-username-error" role="status">{usernameError}</small>}
+          {organizationError && <small className="public-auth-field-error" id="public-register-organization-error" role="status">{organizationError}</small>}
         </label>
         <div className="public-auth-register-phone-group">
           <label className="public-auth-register-field public-auth-register-country-field">Country
@@ -568,55 +658,90 @@ function AuthPage({ mode, initialView = mode }: AuthPageProps) {
             </select>
           </label>
           <label className="public-auth-register-field">Phone number
-            <span className="public-auth-register-input-wrap"><input autoComplete="tel-national" type="tel" name="phone" required value={phoneNumber} onChange={(event) => setPhoneNumber(event.target.value)} placeholder="Phone number" />
+            <span className="public-auth-register-input-wrap"><input autoComplete="tel-national" type="tel" name="phone" required value={phoneNumber} onChange={(event) => setPhoneNumber(event.target.value)} placeholder="Phone number" aria-invalid={registrationAttempted && !phoneIsValid || undefined} />
               {phoneNumber && <button type="button" aria-label="Clear phone number" onClick={() => setPhoneNumber("")}><X size={16} aria-hidden="true" /></button>}
             </span>
+            {registrationAttempted && !phoneIsValid && <small className="public-auth-field-error" role="alert">{phoneNumber ? "Enter a valid phone number for the selected country." : "Please enter your phone number."}</small>}
           </label>
         </div>
         <label className="public-auth-register-field">Password
-          <span className="public-auth-register-input-wrap"><input autoComplete="new-password" type={showPassword ? "text" : "password"} name="new-password" required value={password} onChange={(event) => setPassword(event.target.value)} placeholder="Password" />
+          <span className="public-auth-register-input-wrap"><input autoComplete="new-password" type={showPassword ? "text" : "password"} name="new-password" required value={password} onChange={(event) => setPassword(event.target.value)} placeholder="Password" aria-invalid={registrationAttempted && !password || undefined} />
             <button type="button" aria-label={showPassword ? "Hide password" : "Show password"} aria-pressed={showPassword} onClick={() => setShowPassword((shown) => !shown)}>{showPassword ? <EyeOff size={17} aria-hidden="true" /> : <Eye size={17} aria-hidden="true" />}</button>
           </span>
+          {registrationAttempted && !password && <small className="public-auth-field-error" role="alert">Please enter a password.</small>}
         </label>
         <label className="public-auth-register-field">Confirm password
-          <span className="public-auth-register-input-wrap"><input autoComplete="new-password" type={showConfirmPassword ? "text" : "password"} name="confirm-password" required value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} placeholder="Confirm password" />
+          <span className="public-auth-register-input-wrap"><input autoComplete="new-password" type={showConfirmPassword ? "text" : "password"} name="confirm-password" required value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} placeholder="Confirm password" aria-invalid={registrationAttempted && (!confirmPassword || password !== confirmPassword) || undefined} />
             <button type="button" aria-label={showConfirmPassword ? "Hide password" : "Show password"} aria-pressed={showConfirmPassword} onClick={() => setShowConfirmPassword((shown) => !shown)}>{showConfirmPassword ? <EyeOff size={17} aria-hidden="true" /> : <Eye size={17} aria-hidden="true" />}</button>
           </span>
+          {registrationAttempted && !confirmPassword && <small className="public-auth-field-error" role="alert">Please confirm your password.</small>}
+          {registrationAttempted && confirmPassword && password !== confirmPassword && <small className="public-auth-field-error" role="alert">Passwords do not match.</small>}
         </label>
       </div>
       <label className="public-auth-checkbox">
-        <input type="checkbox" required checked={acceptedTerms} onChange={(event) => setAcceptedTerms(event.target.checked)} />
+        <input type="checkbox" required checked={acceptedTerms} onChange={(event) => setAcceptedTerms(event.target.checked)} aria-invalid={registrationAttempted && !acceptedTerms || undefined} />
         <span>I agree to the <a href="/terms">Terms</a> and <a href="/privacy">Privacy Policy</a>.</span>
       </label>
+      {registrationAttempted && !acceptedTerms && <small className="public-auth-field-error public-auth-terms-error" role="alert">Accept the terms to create an account.</small>}
       <button className="public-auth-submit" type="submit" disabled={busy || status === "authenticating" || !acceptedTerms}>{busy ? "Creating account…" : "Sign up"}</button>
       <p className="public-auth-switch">Already have an account? <a href="/login">Log in</a></p>
     </form>;
   } else if (view === "verify" || view === "email-mfa") {
-    form = <form className="public-auth-form" onSubmit={(event) => void (view === "email-mfa" ? submitEmailMfa(event) : submitVerification(event))} aria-busy={busy}>
+    form = <form className="public-auth-form" onSubmit={(event) => void (view === "email-mfa" ? submitEmailMfa(event) : submitVerification(event))} aria-busy={busy} noValidate>
       {alertContent()}
       {view === "verify" && <>
-        <label>Email address<input autoComplete="email" type="email" name="email" required value={email} onChange={(event) => setEmail(event.target.value)} /></label>
+        <label>Email address<input autoComplete="email" type="email" name="email" required value={email} onChange={(event) => setEmail(event.target.value)} aria-invalid={validationAttempted && !isEmailValid || undefined} /></label>
+        {validationAttempted && !isEmailValid && <small className="public-auth-field-error" role="alert">{email.trim() ? "Enter a valid email address." : "Please enter your email address."}</small>}
       </>}
-      <label>{view === "email-mfa" ? "Sign-in code" : "Email verification code"}<input autoComplete="one-time-code" inputMode="numeric" pattern="[0-9]{6}" maxLength={6} name="code" required value={code} onChange={(event) => setCode(event.target.value.replace(/\D/g, "").slice(0, 6))} /></label>
-      <button className="public-auth-submit" type="submit" disabled={busy || code.length !== 6}>{busy ? "Verifying…" : "Verify and continue"} <ArrowRight size={17} aria-hidden="true" /></button>
-      <button className="public-auth-secondary" type="button" onClick={() => void resendCode()} disabled={busy || resendSeconds > 0}>
-        {resendSeconds > 0 ? `Send another code in ${resendSeconds}s` : "Send another code"}
+      <SixDigitCodeInput
+        label={view === "email-mfa" ? "Please enter OTP" : "Email verification code"}
+        digits={codeDigits}
+        onChange={setCodeDigits}
+        disabled={busy}
+        invalid={validationAttempted && code.length !== 6}
+      />
+      {validationAttempted && code.length !== 6 && <small className="public-auth-field-error" role="alert">
+        {view === "email-mfa" ? "Enter the six-digit sign-in code." : "Enter the six-digit code from your email."}
+      </small>}
+      <button className="public-auth-submit" type="submit" disabled={busy}>
+        {busy ? "Verifying…" : view === "email-mfa" ? "Verify OTP" : "Verify and continue"}
+        {view !== "email-mfa" && <ArrowRight size={17} aria-hidden="true" />}
       </button>
-      <p className="public-auth-switch"><a href="/login">Back to sign in</a></p>
+      {view === "email-mfa" ? <>
+        <p className="public-auth-otp-resend">
+          Have a problem with verification?{" "}
+          <button className="public-auth-otp-link" type="button" onClick={() => void resendCode()} disabled={busy || resendSeconds > 0}>
+            {resendSeconds > 0 ? `Resend OTP in ${resendSeconds}s` : "Resend OTP"}
+          </button>
+        </p>
+        <p className="public-auth-otp-switch">
+          <button className="public-auth-otp-link" type="button" onClick={() => changeView("login")}>Use another account</button>
+        </p>
+      </> : <>
+        <button className="public-auth-secondary" type="button" onClick={() => void resendCode()} disabled={busy || resendSeconds > 0}>
+          {resendSeconds > 0 ? `Send another code in ${resendSeconds}s` : "Send another code"}
+        </button>
+        <p className="public-auth-switch"><a href="/login">Back to sign in</a></p>
+      </>}
     </form>;
   } else if (view === "forgot") {
-    form = <form className="public-auth-form" onSubmit={(event) => void submitForgotPassword(event)} aria-busy={busy}>
+    form = <form className="public-auth-form" onSubmit={(event) => void submitForgotPassword(event)} aria-busy={busy} noValidate>
       {alertContent()}
-      <label>Email address<input autoComplete="email" autoFocus type="email" name="email" required value={email} onChange={(event) => { setEmail(event.target.value); setError(""); }} /></label>
-      <button className="public-auth-submit" type="submit" disabled={busy}>{busy ? "Sending…" : "Reset Password"} <ArrowRight size={17} aria-hidden="true" /></button>
-      <p className="public-auth-switch"><a href="/login">Back to sign in</a></p>
+      <label>Email address<input autoComplete="email" autoFocus type="email" name="email" required value={email} onChange={(event) => { setEmail(event.target.value); setError(""); setMessage(""); }} aria-invalid={Boolean(forgotEmailError) || undefined} aria-describedby={forgotEmailError ? "public-forgot-email-error" : undefined} /></label>
+      {forgotEmailError && <small className="public-auth-field-error" id="public-forgot-email-error" role="alert">{forgotEmailError}</small>}
+      <button className="public-auth-submit" type="submit" disabled={busy}>{busy ? "Sending…" : "Reset Password"}</button>
+      <p className="public-auth-switch">No account yet? <a href="/register">Create one</a> · <a href="/login">Back to sign in</a></p>
     </form>;
   } else if (view === "reset") {
-    form = <form className="public-auth-form" onSubmit={(event) => void submitPasswordReset(event)} aria-busy={busy}>
+    form = <form className="public-auth-form" onSubmit={(event) => void submitPasswordReset(event)} aria-busy={busy} noValidate>
       {alertContent()}
       {!resetToken && <p className="public-auth-error" role="alert">This reset link is incomplete. <a href="/forgot-password">Request another reset email</a>.</p>}
-      <label className="public-auth-password-label"><span>New password</span><span className="public-auth-password-input"><input autoComplete="new-password" type={showPassword ? "text" : "password"} name="new-password" placeholder="New password" required value={password} onChange={(event) => { setPassword(event.target.value); setError(""); }} /><button type="button" aria-label={showPassword ? "Hide password" : "Show password"} aria-pressed={showPassword} onClick={() => setShowPassword((shown) => !shown)}>{showPassword ? <EyeOff size={17} aria-hidden="true" /> : <Eye size={17} aria-hidden="true" />}</button></span></label>
-      <label className="public-auth-password-label"><span>Confirm new password</span><span className="public-auth-password-input"><input autoComplete="new-password" type={showConfirmPassword ? "text" : "password"} name="confirm-password" placeholder="Confirm password" required value={confirmPassword} onChange={(event) => { setConfirmPassword(event.target.value); setError(""); }} /><button type="button" aria-label={showConfirmPassword ? "Hide confirmation password" : "Show confirmation password"} aria-pressed={showConfirmPassword} onClick={() => setShowConfirmPassword((shown) => !shown)}>{showConfirmPassword ? <EyeOff size={17} aria-hidden="true" /> : <Eye size={17} aria-hidden="true" />}</button></span></label>
+      <label className="public-auth-password-label"><span>New password</span><span className="public-auth-password-input"><input autoComplete="new-password" type={showPassword ? "text" : "password"} name="new-password" placeholder="New password" required value={password} onChange={(event) => { setPassword(event.target.value); setError(""); }} aria-invalid={Boolean(resetPasswordError) || undefined} aria-describedby={resetPasswordError ? "public-reset-password-error" : undefined} /><button type="button" aria-label={showPassword ? "Hide password" : "Show password"} aria-pressed={showPassword} onClick={() => setShowPassword((shown) => !shown)}>{showPassword ? <EyeOff size={17} aria-hidden="true" /> : <Eye size={17} aria-hidden="true" />}</button></span>
+        {resetPasswordError && <small className="public-auth-field-error" id="public-reset-password-error" role="alert">{resetPasswordError}</small>}
+      </label>
+      <label className="public-auth-password-label"><span>Confirm new password</span><span className="public-auth-password-input"><input autoComplete="new-password" type={showConfirmPassword ? "text" : "password"} name="confirm-password" placeholder="Confirm password" required value={confirmPassword} onChange={(event) => { setConfirmPassword(event.target.value); setError(""); }} aria-invalid={Boolean(resetConfirmationError) || undefined} aria-describedby={resetConfirmationError ? "public-reset-confirm-error" : undefined} /><button type="button" aria-label={showConfirmPassword ? "Hide confirmation password" : "Show confirmation password"} aria-pressed={showConfirmPassword} onClick={() => setShowConfirmPassword((shown) => !shown)}>{showConfirmPassword ? <EyeOff size={17} aria-hidden="true" /> : <Eye size={17} aria-hidden="true" />}</button></span>
+        {resetConfirmationError && <small className="public-auth-field-error" id="public-reset-confirm-error" role="alert">{resetConfirmationError}</small>}
+      </label>
       <button className="public-auth-submit" type="submit" disabled={busy || !resetToken}>{busy ? "Updating password…" : "Reset Password"}</button>
       <p className="public-auth-switch public-auth-reset-contact">Have a problem with password reset? <a href="mailto:support@pesaguard.co.ke">Contact us</a></p>
     </form>;
@@ -632,9 +757,11 @@ function AuthPage({ mode, initialView = mode }: AuthPageProps) {
         <p className="public-auth-mfa-instructions">Add this authenticator setup URI to your app, then enter its current six-digit code.</p>
         {enrollment && <label>Authenticator setup URI<input readOnly value={enrollment.provisioningUri} /></label>}
         {enrollment && <label>Manual setup key<input readOnly value={enrollment.secret} /></label>}
-        <form className="public-auth-nested-form" onSubmit={(event) => void submitEnrollment(event)}>
-          <label>Authenticator code<input autoComplete="one-time-code" inputMode="numeric" pattern="[0-9]{6}" maxLength={6} required value={code} onChange={(event) => setCode(event.target.value.replace(/\D/g, "").slice(0, 6))} /></label>
-          <button className="public-auth-submit" type="submit" disabled={busy || code.length !== 6}>{busy ? "Confirming…" : "Confirm authenticator"} <ArrowRight size={17} aria-hidden="true" /></button>
+        <form className="public-auth-nested-form" onSubmit={(event) => void submitEnrollment(event)} noValidate>
+          <label>Authenticator code<input autoComplete="one-time-code" inputMode="numeric" pattern="[0-9]{6}" maxLength={6} required value={code} onChange={(event) => setCode(event.target.value.replace(/\D/g, "").slice(0, 6))} aria-invalid={validationAttempted && code.length !== 6 || undefined} />
+            {validationAttempted && code.length !== 6 && <small className="public-auth-field-error" role="alert">Enter the six-digit code from your authenticator app.</small>}
+          </label>
+          <button className="public-auth-submit" type="submit" disabled={busy}>{busy ? "Confirming…" : "Confirm authenticator"} <ArrowRight size={17} aria-hidden="true" /></button>
         </form>
       </>}
     </div>;
@@ -645,8 +772,9 @@ function AuthPage({ mode, initialView = mode }: AuthPageProps) {
   return <>
     <AuthFrame
       mode={viewMode}
-      loginLanding={view === "login"}
-      flowView={view !== "login" && view !== "register"}
+      loginLanding={view === "login" || view === "email-mfa"}
+      emailMfa={view === "email-mfa"}
+      flowView={view !== "login" && view !== "register" && view !== "email-mfa"}
       flowFooterInsideLayout={view === "forgot" || view === "reset"}
       flowFooterAfterPanel={view === "reset" ? <p className="public-auth-reset-back"><a href="/login">←&nbsp; Back to Login</a></p> : undefined}
       passwordReset={view === "reset"}
@@ -656,25 +784,16 @@ function AuthPage({ mode, initialView = mode }: AuthPageProps) {
       footer={view === "enroll-mfa" || view === "locked" ? <a href="/login">Return to sign in</a> : undefined}
     >{form}</AuthFrame>
     {successDialog && (
-      <div
-        className="public-auth-success-overlay"
-        onMouseDown={(event) => {
-          if (event.target === event.currentTarget && successDialog === "request") setSuccessDialog(null);
-        }}
-      >
+      <div className="public-auth-success-overlay">
         <section className="public-auth-success-dialog" role="alertdialog" aria-modal="true" aria-labelledby="public-auth-success-title" aria-describedby="public-auth-success-description">
           <span className="public-auth-success-mark" aria-hidden="true"><Check size={48} strokeWidth={4} /></span>
           <h2 id="public-auth-success-title">
-            {successDialog === "request" ? <><span>Password</span> Reset</> : <><span>Password</span> Changed</>}
+            <><span>Password</span> Changed</>
           </h2>
           <p id="public-auth-success-description">
-            {successDialog === "request"
-              ? "Your request has been received. If an account matches this email, check your inbox for reset instructions."
-              : <>Your password has been changed successfully.<br />Click proceed to log in.</>}
+            <>Your password has been changed successfully.<br />Click proceed to log in.</>
           </p>
-          {successDialog === "request"
-            ? <button ref={(element) => { successActionRef.current = element; }} className="public-auth-success-action" type="button" onClick={() => setSuccessDialog(null)}>Close</button>
-            : <a ref={(element) => { successActionRef.current = element; }} className="public-auth-success-action" href="/login">Proceed</a>}
+          <a ref={(element) => { successActionRef.current = element; }} className="public-auth-success-action" href="/login">Proceed</a>
         </section>
       </div>
     )}

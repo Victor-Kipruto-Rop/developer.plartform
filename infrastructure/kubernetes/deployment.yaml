@@ -31,7 +31,7 @@ spec:
         app.kubernetes.io/part-of: pesaguard
       annotations:
         prometheus.io/scrape: "true"
-        prometheus.io/port: "8080"
+        prometheus.io/port: "9090"
         prometheus.io/path: "/actuator/prometheus"
     spec:
       # Long enough for in-flight requests to finish. Combined with
@@ -40,6 +40,8 @@ spec:
       # Binds the zero-privilege account. Without this the pod silently inherits the
       # namespace default service account, which usually has more access.
       serviceAccountName: pesaguard-developer-platform
+      imagePullSecrets:
+        - name: pesaguard-ghcr
       securityContext:
         runAsNonRoot: true
         runAsUser: 10001
@@ -49,11 +51,13 @@ spec:
           type: RuntimeDefault
       containers:
         - name: backend
-          image: pesaguard-developer-platform:latest
+          image: pesaguard-developer-platform:release
           imagePullPolicy: IfNotPresent
           ports:
             - name: http
               containerPort: 8080
+            - name: management
+              containerPort: 9090
           env:
             - name: SPRING_PROFILES_ACTIVE
               value: production
@@ -79,8 +83,8 @@ spec:
             # Generous: Flyway runs here, and a slow first migration must not be
             # mistaken for a hang and killed.
             httpGet:
-              path: /health/ready
-              port: http
+              path: /actuator/health/readiness
+              port: management
             failureThreshold: 30
             periodSeconds: 5
           livenessProbe:
@@ -93,8 +97,8 @@ spec:
             timeoutSeconds: 3
           readinessProbe:
             httpGet:
-              path: /health/ready
-              port: http
+              path: /actuator/health/readiness
+              port: management
             periodSeconds: 5
             failureThreshold: 2
             timeoutSeconds: 3

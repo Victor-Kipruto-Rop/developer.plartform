@@ -1,3 +1,5 @@
+import { ValidatedForm } from "../../components/forms/ValidatedForm";
+import { getUserMessage } from "../../lib/errors";
 import { useEffect, useState, type FormEvent } from "react";
 import {
   Activity,
@@ -165,7 +167,7 @@ export function WebhooksPage() {
       })
       .catch((requestError: unknown) => {
         if (!controller.signal.aborted) {
-          setError(requestError instanceof Error ? requestError.message : "Projects could not be loaded.");
+          setError(getUserMessage(requestError, "Projects could not be loaded."));
         }
       })
       .finally(() => {
@@ -199,7 +201,7 @@ export function WebhooksPage() {
       if (!controller.signal.aborted) {
         setEnvironments([]);
         setEnvironmentId("");
-        setError(requestError instanceof Error ? requestError.message : "Project environments could not be loaded.");
+        setError(getUserMessage(requestError, "Project environments could not be loaded."));
       }
     });
     return () => controller.abort();
@@ -262,7 +264,7 @@ export function WebhooksPage() {
               ?? "");
       } else {
         failures.push(endpointResult.status === "rejected"
-          ? endpointResult.reason instanceof Error ? endpointResult.reason.message : "Endpoints could not be loaded."
+          ? getUserMessage(endpointResult.reason, "Endpoints could not be loaded.")
           : "The webhook API returned an invalid endpoint response.");
       }
 
@@ -273,7 +275,7 @@ export function WebhooksPage() {
         setDeliveryTotal(deliveryResult.value.totalElements);
       } else {
         failures.push(deliveryResult.status === "rejected"
-          ? deliveryResult.reason instanceof Error ? deliveryResult.reason.message : "Delivery history could not be loaded."
+          ? getUserMessage(deliveryResult.reason, "Delivery history could not be loaded.")
           : "The events API returned an invalid delivery response.");
       }
 
@@ -285,7 +287,7 @@ export function WebhooksPage() {
             : catalogResult.value.find((type) => type.lifecycle === "ACTIVE")?.name ?? "");
       } else {
         failures.push(catalogResult.status === "rejected"
-          ? catalogResult.reason instanceof Error ? catalogResult.reason.message : "Event types could not be loaded."
+          ? getUserMessage(catalogResult.reason, "Event types could not be loaded.")
           : "The events API returned an invalid catalog response.");
       }
 
@@ -293,7 +295,7 @@ export function WebhooksPage() {
         setSubscriptions(subscriptionResult.value.items);
       } else {
         failures.push(subscriptionResult.status === "rejected"
-          ? subscriptionResult.reason instanceof Error ? subscriptionResult.reason.message : "Subscriptions could not be loaded."
+          ? getUserMessage(subscriptionResult.reason, "Subscriptions could not be loaded.")
           : "The events API returned an invalid subscription response.");
       }
       setError(failures.join(" "));
@@ -350,7 +352,7 @@ export function WebhooksPage() {
       setDialogMode("secret");
       setRefreshKey((key) => key + 1);
     } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : "The webhook endpoint could not be created.");
+      setError(getUserMessage(requestError, "The webhook endpoint could not be created."));
     } finally {
       setSaving(false);
     }
@@ -368,7 +370,7 @@ export function WebhooksPage() {
       setMessage(`${endpoint.name} is now ${status.toLowerCase()}.`);
       setRefreshKey((key) => key + 1);
     } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : "Endpoint status could not be updated.");
+      setError(getUserMessage(requestError, "Endpoint status could not be updated."));
     }
   }
 
@@ -390,7 +392,7 @@ export function WebhooksPage() {
       setEditingEndpointId("");
       setRefreshKey((key) => key + 1);
     } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : "Endpoint configuration could not be saved.");
+      setError(getUserMessage(requestError, "Endpoint configuration could not be saved."));
     } finally {
       setSaving(false);
     }
@@ -413,7 +415,7 @@ export function WebhooksPage() {
       setDialogMode("secret");
       setMessage(`Signing secret rotated for ${endpoint.name}.`);
     } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : "The signing secret could not be rotated.");
+      setError(getUserMessage(requestError, "The signing secret could not be rotated."));
     } finally {
       setSaving(false);
     }
@@ -440,7 +442,7 @@ export function WebhooksPage() {
       setMessage(`Subscribed ${createdSubscription.endpointId} to ${createdSubscription.eventType}.`);
       setRefreshKey((key) => key + 1);
     } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : "The subscription could not be created.");
+      setError(getUserMessage(requestError, "The subscription could not be created."));
     } finally {
       setSaving(false);
     }
@@ -459,7 +461,7 @@ export function WebhooksPage() {
       setMessage(`${subscription.eventType} subscription is now ${status.toLowerCase()}.`);
       setRefreshKey((key) => key + 1);
     } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : "Subscription status could not be updated.");
+      setError(getUserMessage(requestError, "Subscription status could not be updated."));
     }
   }
 
@@ -475,7 +477,7 @@ export function WebhooksPage() {
       setMessage(`Replay recorded as attempt ${attempt.attempt} (${attempt.status.toLowerCase()}).`);
       setRefreshKey((key) => key + 1);
     } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : "The delivery could not be replayed.");
+      setError(getUserMessage(requestError, "The delivery could not be replayed."));
     } finally {
       setReplayingDeliveryId("");
     }
@@ -500,7 +502,7 @@ export function WebhooksPage() {
       link.click();
       window.setTimeout(() => URL.revokeObjectURL(url), 0);
     } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : "Delivery history could not be exported.");
+      setError(getUserMessage(requestError, "Delivery history could not be exported."));
     } finally {
       setExportingDeliveries(false);
     }
@@ -512,7 +514,7 @@ export function WebhooksPage() {
       await copyTextToClipboard(created.signingSecret);
       setCopied(true);
     } catch (copyError) {
-      setError(copyError instanceof Error ? copyError.message : "Could not copy the signing secret.");
+      setError(getUserMessage(copyError, "Could not copy the signing secret."));
     }
   }
 
@@ -698,14 +700,14 @@ export function WebhooksPage() {
                       </div>
 
                       {editingEndpointId === selectedEndpoint.id ? (
-                        <form className="webhooks-edit-form" onSubmit={(event) => void saveEndpoint(event)}>
+                        <ValidatedForm className="webhooks-edit-form" onSubmit={(event) => void saveEndpoint(event)}>
                           <label>Endpoint name<input required maxLength={120} value={editName} onChange={(event) => setEditName(event.target.value)} /></label>
                           <label>HTTPS destination<input type="url" required maxLength={2048} value={editUrl} onChange={(event) => setEditUrl(event.target.value)} /></label>
                           <div className="webhooks-actions">
                             <button className="button button--primary" type="submit" disabled={saving || !editName.trim() || !editUrl.trim()}>{saving ? "Saving…" : "Save changes"}</button>
                             <button className="button button--secondary" type="button" disabled={saving} onClick={() => setEditingEndpointId("")}>Cancel</button>
                           </div>
-                        </form>
+                        </ValidatedForm>
                       ) : (
                         <>
                           <div className="webhooks-detail-facts">
@@ -762,7 +764,7 @@ export function WebhooksPage() {
                   <span className="webhooks-count">{subscriptions.length}</span>
                 </div>
                 {canCreate && (
-                  <form className="webhooks-subscribe-form" onSubmit={(event) => void createSubscription(event)}>
+                  <ValidatedForm className="webhooks-subscribe-form" onSubmit={(event) => void createSubscription(event)}>
                     <label>
                       <span>Endpoint</span>
                       <select required value={subscriptionEndpointId} onChange={(event) => setSubscriptionEndpointId(event.target.value)} disabled={saving || activeEndpoints.length === 0}>
@@ -782,7 +784,7 @@ export function WebhooksPage() {
                     <button className="button button--primary" type="submit" disabled={saving || !projectId || !subscriptionEndpointId || !eventType || activeEndpoints.length === 0}>
                       <Plus size={14} />{saving ? "Adding…" : "Add subscription"}
                     </button>
-                  </form>
+                  </ValidatedForm>
                 )}
                 {loading && subscriptions.length === 0 ? (
                   <p className="workflow-hint" role="status">Loading subscriptions…</p>
@@ -926,7 +928,7 @@ export function WebhooksPage() {
             </div>
 
             {dialogMode === "create" ? (
-              <form className="webhooks-create-form" onSubmit={(event) => void createEndpoint(event)}>
+              <ValidatedForm className="webhooks-create-form" onSubmit={(event) => void createEndpoint(event)}>
                 <label>
                   <span>Endpoint name</span>
                   <input required maxLength={120} value={endpointName} onChange={(event) => setEndpointName(event.target.value)} placeholder="Production notifications" disabled={saving} />
@@ -941,7 +943,7 @@ export function WebhooksPage() {
                   <button className="button button--secondary" type="button" disabled={saving} onClick={closeDialog}>Cancel</button>
                   <button className="button button--primary" type="submit" disabled={saving || !projectId}>{saving ? "Registering…" : "Register endpoint"}</button>
                 </div>
-              </form>
+              </ValidatedForm>
             ) : (
               <div className="webhooks-secret-content">
                 <div className="webhooks-secret-info">

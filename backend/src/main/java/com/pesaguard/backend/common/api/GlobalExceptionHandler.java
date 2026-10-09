@@ -250,6 +250,8 @@ public class GlobalExceptionHandler {
             case "USERNAME_INVALID" ->
                 "Username must be 6 to 25 lowercase letters (a-z) and cannot be an email address.";
             case "USERNAME_ALREADY_TAKEN" -> "That username is already in use. Choose another one.";
+            case "PHONE_ALREADY_REGISTERED" ->
+                "This phone number is already in use. Use a different number or sign in.";
             case "EMAIL_ALREADY_REGISTERED" ->
                 "An account already exists for this email. Sign in or reset your password.";
             case "REGISTRATION_DISABLED" -> "New account registration is currently unavailable.";

@@ -131,6 +131,15 @@ export function completeRegistrationVerification(
   });
 }
 
+export function completeRegistrationVerificationByLink(token: string): Promise<AuthSession> {
+  return apiData<AuthSession>("/api/v1/auth/verify-email/complete-registration-link", {
+    method: "POST",
+    body: JSON.stringify({ token }),
+    anonymous: true,
+    skipRefresh: true,
+  });
+}
+
 export function resendEmailVerification(email: string): Promise<void> {
   return apiData<void>("/api/v1/auth/verify-email/resend", {
     method: "POST",

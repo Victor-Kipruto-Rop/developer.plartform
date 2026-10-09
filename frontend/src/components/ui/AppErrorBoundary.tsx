@@ -1,18 +1,24 @@
 import { Component, type ErrorInfo, type ReactNode } from "react";
 import { AlertTriangle, RotateCw } from "lucide-react";
+import { reportError } from "../../lib/errors";
 
 type AppErrorBoundaryProps = { children: ReactNode };
-type AppErrorBoundaryState = { hasError: boolean };
+type AppErrorBoundaryState = { hasError: boolean; retryKey: number };
 
 export class AppErrorBoundary extends Component<AppErrorBoundaryProps, AppErrorBoundaryState> {
-  state: AppErrorBoundaryState = { hasError: false };
+  state: AppErrorBoundaryState = { hasError: false, retryKey: 0 };
 
   static getDerivedStateFromError(): AppErrorBoundaryState {
-    return { hasError: true };
+    return { hasError: true, retryKey: 0 };
   }
 
   componentDidCatch(error: Error, info: ErrorInfo) {
-    console.error("The developer platform encountered an unexpected rendering error.", error, info.componentStack);
+    const component = info.componentStack?.match(/^\s*at\s+([^(\s]+)/m)?.[1] ?? "react-render";
+    reportError(error, { component });
+  }
+
+  private retry = () => {
+    this.setState((state) => ({ hasError: false, retryKey: state.retryKey + 1 }));
   }
 
   render() {
@@ -22,14 +28,15 @@ export class AppErrorBoundary extends Component<AppErrorBoundaryProps, AppErrorB
           <div className="app-error-card">
             <span className="app-error-icon"><AlertTriangle size={22} aria-hidden="true" /></span>
             <h1>Something went wrong</h1>
-            <p>The page could not be displayed. Reload the platform to try again.</p>
-            <button className="button primary" type="button" onClick={() => window.location.reload()}>
-              Reload platform <RotateCw size={15} aria-hidden="true" />
+            <p>We couldn't load this page correctly. Please try again.</p>
+            <button className="button primary" type="button" onClick={this.retry}>
+              Try again <RotateCw size={15} aria-hidden="true" />
             </button>
+            <a className="button secondary" href="/">Go to dashboard</a>
           </div>
         </main>
       );
     }
-    return this.props.children;
+    return <div key={this.state.retryKey}>{this.props.children}</div>;
   }
 }

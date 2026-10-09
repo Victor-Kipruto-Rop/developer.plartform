@@ -1,3 +1,4 @@
+import { getUserMessage } from "../../lib/errors";
 import { useEffect, useState } from "react";
 import { PageHeader } from "../../components/ui/PageHeader";
 import { apiData } from "../../lib/api";
@@ -39,7 +40,7 @@ export function AuditDetailsPage() {
         if (eventId && !selected) setError("That event was not found in the latest audit records returned for this organization.");
       })
       .catch((requestError: unknown) => {
-        if (active) setError(requestError instanceof Error ? requestError.message : "Could not load the audit event.");
+        if (active) setError(getUserMessage(requestError, "Could not load the audit event."));
       })
       .finally(() => {
         if (active) setLoading(false);

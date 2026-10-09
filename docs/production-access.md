@@ -5,6 +5,13 @@ revocation, and review history are implemented and unit-tested. **V14 has never
 been executed** (Docker/PostgreSQL unavailable), so the new states, the altered
 CHECK constraints, and the history table are unverified.
 
+## Legacy workflow
+
+This request/review service is retained for compatibility and administrative
+history; developers do not need to submit or review a production-access request
+to launch. Production API-key traffic is gated by a successful Go-Live launch
+for the key's exact project and environment. See [Go-Live](./go-live.md).
+
 ## This phase extended an existing system
 
 Production access already existed: a `production_access_requests` table, a
@@ -99,8 +106,9 @@ alter a CHECK in place:
   `reason`. This is the largest gap against the phase.
 - **No provisioning.** Activation is a manual API call; nothing actually creates
   a production credential when it succeeds.
-- **No enforcement.** Nothing checks `isActiveGrant` before serving a request, so
-  an ACTIVE grant does not yet unlock anything.
+- **The request grant is not the traffic gate.** API-key authentication does
+  not use `isActiveGrant`; production traffic is gated by the Go-Live launch
+  record instead.
 - **No evidence capture.** The `evidence` column exists and the history entity
   stores it, but no endpoint accepts it and `recordHistory` always writes null.
 - **No OpenAPI route.** The six new controller routes are absent from the spec.

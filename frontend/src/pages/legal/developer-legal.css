@@ -25,7 +25,7 @@
 }
 
 .developer-legal-brand {
-  gap: 10px;
+  gap: 4px;
   color: var(--text);
   font-size: 18px;
   font-weight: 750;
@@ -34,6 +34,8 @@
 
 .developer-legal-brand img {
   flex: 0 0 auto;
+  width: 34px;
+  height: 36px;
 }
 
 .developer-legal-brand strong {
@@ -88,7 +90,7 @@
 .developer-legal-eyebrow {
   gap: 7px;
   color: var(--forest);
-  font-size: 11px;
+  font-size: 14px;
   font-weight: 750;
   letter-spacing: .1em;
 }
@@ -174,6 +176,10 @@
   }
 
   .developer-legal-header nav a {
+    font-size: 12px;
+  }
+
+  .developer-legal-eyebrow {
     font-size: 12px;
   }
 

@@ -1,3 +1,5 @@
+import { ValidatedForm } from "../../components/forms/ValidatedForm";
+import { getUserMessage } from "../../lib/errors";
 import { useState, type FormEvent } from "react";
 import { Activity, Search } from "lucide-react";
 import { PageHeader } from "../../components/ui/PageHeader";
@@ -34,7 +36,7 @@ export function DebuggingPage() {
       if (!result?.requestId) throw new Error("The request API returned an invalid record.");
       setRecord(result);
     } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : "Request correlation data could not be loaded.");
+      setError(getUserMessage(requestError, "Request correlation data could not be loaded."));
     } finally {
       setLoading(false);
     }
@@ -49,10 +51,10 @@ export function DebuggingPage() {
       />
       <section className="panel">
         <div className="panel-heading"><div><h2>Find a request</h2><p>Search uses organization-scoped API request metadata.</p></div><Activity size={18} /></div>
-        <form className="workflow-form" onSubmit={search}>
+        <ValidatedForm className="workflow-form" onSubmit={search}>
           <label>Request ID<input required maxLength={64} value={requestId} onChange={(event) => setRequestId(event.target.value)} placeholder="Paste an X-Request-ID value" /></label>
           <div className="workflow-form-actions"><button className="button button--primary" type="submit" disabled={loading || !requestId.trim()}><Search size={14} />{loading ? "Searching…" : "Find request"}</button></div>
-        </form>
+        </ValidatedForm>
         {error && <p className="workflow-error" role="alert">{error}</p>}
         {record && <dl className="request-log-details">
           <dt>Request ID</dt><dd><code>{record.requestId}</code></dd>

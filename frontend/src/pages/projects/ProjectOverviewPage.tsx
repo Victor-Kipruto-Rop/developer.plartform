@@ -1,3 +1,4 @@
+import { getUserMessage } from "../../lib/errors";
 import { ArrowRight, FolderKanban, RefreshCw } from "lucide-react";
 import { useEffect, useState } from "react";
 import type { PageId } from "../../app/routes";
@@ -67,13 +68,13 @@ export function ProjectOverviewPage({ onNavigate }: { onNavigate: (page: PageId)
         window.sessionStorage.setItem("pesaguard.project.name", projectResult.value.name);
       } else {
         setProject(null);
-        setError(projectResult.reason instanceof Error ? projectResult.reason.message : "Unable to load this project.");
+        setError(getUserMessage(projectResult.reason, "Unable to load this project."));
       }
       if (environmentResult.status === "fulfilled") {
         setEnvironments(environmentResult.value);
       } else {
         setEnvironments([]);
-        setEnvironmentError(environmentResult.reason instanceof Error ? environmentResult.reason.message : "Unable to load project environments.");
+        setEnvironmentError(getUserMessage(environmentResult.reason, "Unable to load project environments."));
       }
       setLoading(false);
     });
@@ -91,7 +92,7 @@ export function ProjectOverviewPage({ onNavigate }: { onNavigate: (page: PageId)
       setMessage(`Project ${action === "deactivate" ? "deactivated" : action === "restore" ? "restored" : "activated"}.`);
       setReloadKey((current) => current + 1);
     } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : "Project status could not be changed.");
+      setError(getUserMessage(requestError, "Project status could not be changed."));
     } finally {
       setSaving(false);
     }

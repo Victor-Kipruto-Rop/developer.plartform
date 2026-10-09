@@ -211,6 +211,19 @@ public class AuthenticationController {
                 .body(ApiResponse.of(response));
     }
 
+    @PostMapping("/verify-email/complete-registration-link")
+    ResponseEntity<ApiResponse<AuthenticationResponse>> completeRegistrationVerificationByLink(
+            @Valid @RequestBody CompleteRegistrationLinkRequest request,
+            HttpServletRequest servletRequest) {
+        AuthenticationResponse response = loginService.completeRegistrationVerificationByLink(
+                request.token(),
+                SessionDevice.describe(servletRequest.getHeader("User-Agent")),
+                servletRequest.getRemoteAddr());
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CACHE_CONTROL, "no-store")
+                .body(ApiResponse.of(response));
+    }
+
     @PostMapping("/verify-email/resend")
     ResponseEntity<Void> resendVerification(@Valid @RequestBody ResendEmailVerificationRequest request) {
         emailVerificationService.reissue(request.email());
@@ -218,11 +231,10 @@ public class AuthenticationController {
     }
 
     /**
-     * Starts a password reset.
+     * Starts a password reset without revealing whether an address is registered.
      *
-     * <p>Always answers 202 with no body. The token is never returned here; it
-     * exists only so a delivery transport can put it in an email. Callers must
-     * not branch on whether an address is registered.
+     * <p>The token is never returned here; it exists only so a delivery transport
+     * can put it in an email.
      */
     @PostMapping("/forgot-password")
     ResponseEntity<Void> forgotPassword(@Valid @RequestBody ForgotPasswordRequest request) {

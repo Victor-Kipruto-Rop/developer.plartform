@@ -1,3 +1,5 @@
+import { ValidatedForm } from "../../components/forms/ValidatedForm";
+import { AppError, getUserMessage } from "../../lib/errors";
 import { Activity, Check, CloudCog, Copy, KeyRound, Plus, RefreshCw, Save, ShieldCheck, Trash2 } from "lucide-react";
 import { useEffect, useState, type FormEvent } from "react";
 import { PageHeader } from "../../components/ui/PageHeader";
@@ -172,35 +174,33 @@ export function EnvironmentPage() {
         setConfigurationText(JSON.stringify(environmentResult.value.configuration ?? {}, null, 2));
       } else {
         setEnvironment(null);
-        setError(environmentResult.reason instanceof Error ? environmentResult.reason.message : "Unable to load this environment.");
+        setError(getUserMessage(environmentResult.reason, "Unable to load this environment."));
       }
       if (historyResult.status === "fulfilled") {
         setHistory(historyResult.value);
       } else {
         setHistory([]);
-        setHistoryError(historyResult.reason instanceof Error ? historyResult.reason.message : "Environment history is unavailable.");
+        setHistoryError(getUserMessage(historyResult.reason, "Environment history is unavailable."));
       }
       if (credentialResult.status === "fulfilled") {
         setCredentials(credentialResult.value);
       } else {
         setCredentials([]);
-        setCredentialError(credentialResult.reason instanceof Error ? credentialResult.reason.message : "Environment credentials are unavailable.");
+        setCredentialError(getUserMessage(credentialResult.reason, "Environment credentials are unavailable."));
       }
       if (limitsResult.status === "fulfilled") {
         setLimits(limitsResult.value);
         setLimitsError(null);
       } else {
         setLimits(null);
-        setLimitsError(limitsResult.reason instanceof Error ? limitsResult.reason.message : "Environment limits are unavailable.");
+        setLimitsError(getUserMessage(limitsResult.reason, "Environment limits are unavailable."));
       }
       if (policyResult.status === "fulfilled") {
         setAccessPolicies(policyResult.value);
         setPolicyError(null);
       } else {
         setAccessPolicies([]);
-        setPolicyError(policyResult.reason instanceof Error
-          ? policyResult.reason.message
-          : "Environment access policies are unavailable.");
+        setPolicyError(getUserMessage(policyResult.reason, "Environment access policies are unavailable."));
       }
       setLoading(false);
     });
@@ -235,7 +235,7 @@ export function EnvironmentPage() {
         || left.subjectRole.localeCompare(right.subjectRole)));
       setPolicyMessage(`Access policy saved for ${saved.subjectType === "ORGANIZATION" ? "organization" : "project"} role ${saved.subjectRole}.`);
     } catch (requestError) {
-      setPolicyError(requestError instanceof Error ? requestError.message : "The environment access policy could not be saved.");
+      setPolicyError(getUserMessage(requestError, "The environment access policy could not be saved."));
     } finally {
       setPolicySaving(false);
     }
@@ -254,7 +254,7 @@ export function EnvironmentPage() {
       setAccessPolicies((current) => current.filter((item) => item.id !== policy.id));
       setPolicyMessage(`Policy removed for ${policy.subjectType === "ORGANIZATION" ? "organization" : "project"} role ${policy.subjectRole}.`);
     } catch (requestError) {
-      setPolicyError(requestError instanceof Error ? requestError.message : "The environment access policy could not be removed.");
+      setPolicyError(getUserMessage(requestError, "The environment access policy could not be removed."));
     } finally {
       setPolicySaving(false);
     }
@@ -266,11 +266,11 @@ export function EnvironmentPage() {
     try {
       const parsed: unknown = JSON.parse(configurationText);
       if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
-        throw new Error("Configuration must be a JSON object.");
+        throw new AppError("VALIDATION_ERROR", "Configuration must be a JSON object.");
       }
       configuration = Object.fromEntries(Object.entries(parsed));
     } catch (parseError) {
-      setError(parseError instanceof Error ? parseError.message : "Enter valid JSON configuration.");
+      setError(getUserMessage(parseError, "Enter valid JSON configuration."));
       return;
     }
 
@@ -287,7 +287,7 @@ export function EnvironmentPage() {
       setMessage("Environment configuration saved.");
       setReloadKey((current) => current + 1);
     } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : "Environment configuration could not be saved.");
+      setError(getUserMessage(requestError, "Environment configuration could not be saved."));
     } finally {
       setSaving(false);
     }
@@ -309,7 +309,7 @@ export function EnvironmentPage() {
       setCredentialSecret("");
       setCredentialMessage(`Credential version ${created.version} was stored. The platform will not return the secret value.`);
     } catch (requestError) {
-      setCredentialError(requestError instanceof Error ? requestError.message : "The environment credential could not be stored.");
+      setCredentialError(getUserMessage(requestError, "The environment credential could not be stored."));
     } finally {
       setCredentialSaving(false);
     }
@@ -329,7 +329,7 @@ export function EnvironmentPage() {
       setCredentials((current) => current.map((item) => item.id === credential.id ? { ...item, status: "REVOKED" } : item));
       setCredentialMessage(`${credential.name} version ${credential.version} was revoked.`);
     } catch (requestError) {
-      setCredentialError(requestError instanceof Error ? requestError.message : "The environment credential could not be revoked.");
+      setCredentialError(getUserMessage(requestError, "The environment credential could not be revoked."));
     } finally {
       setCredentialSaving(false);
     }
@@ -355,7 +355,7 @@ export function EnvironmentPage() {
       setLimits(updated);
       setLimitsMessage("Environment limits saved. Request and burst limits now apply to API key traffic.");
     } catch (requestError) {
-      setLimitsError(requestError instanceof Error ? requestError.message : "Environment limits could not be saved.");
+      setLimitsError(getUserMessage(requestError, "Environment limits could not be saved."));
     } finally {
       setLimitsSaving(false);
     }
@@ -377,7 +377,7 @@ export function EnvironmentPage() {
       setMessage(`Environment ${action === "suspend" ? "suspended" : "resumed"}.`);
       setReloadKey((current) => current + 1);
     } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : "Environment status could not be changed.");
+      setError(getUserMessage(requestError, "Environment status could not be changed."));
     } finally {
       setSaving(false);
     }
@@ -473,7 +473,7 @@ export function EnvironmentPage() {
                 {canUpdate && <td><button className="text-button text-button--danger" type="button" disabled={policySaving} onClick={() => void deleteAccessPolicy(policy)}><Trash2 size={13} />Remove</button></td>}
               </tr>)}
             </tbody></table></div>}
-            {canUpdate && <form className="workflow-form" onSubmit={(event) => void saveAccessPolicy(event)}>
+            {canUpdate && <ValidatedForm className="workflow-form" onSubmit={(event) => void saveAccessPolicy(event)}>
               <label>Subject type<select value={policySubjectType} disabled={policySaving} onChange={(event) => {
                 const nextType = event.target.value as EnvironmentAccessPolicy["subjectType"];
                 setPolicySubjectType(nextType);
@@ -489,21 +489,21 @@ export function EnvironmentPage() {
               </fieldset>
               <label>Allowed IP addresses or CIDR ranges (optional)<textarea rows={3} spellCheck={false} value={policyIpAllowlist} disabled={policySaving} onChange={(event) => setPolicyIpAllowlist(event.target.value)} placeholder={"203.0.113.10\n198.51.100.0/24"} /></label>
               <div className="workflow-form-actions"><button className="button button--primary" type="submit" disabled={policySaving || policyPermissions.length === 0}>{policySaving ? "Saving…" : "Save role policy"}</button></div>
-            </form>}
+            </ValidatedForm>}
           </section>
 
           <section id="environment-limits" className="panel settings-group environment-limits-panel">
             <div className="settings-group-header"><div className="settings-group-title-wrap"><span className="settings-group-icon"><RefreshCw size={17} /></span><div><h2>Rate limits and quotas</h2><p>Backend-enforced key, credential, and environment request budgets.</p></div></div><span className="table-tag">ENFORCED</span></div>
             {limitsError && <p className="workflow-error" role="alert">{limitsError}</p>}
             {limitsMessage && <p className="workflow-success" role="status">{limitsMessage}</p>}
-            {limits && <form className="workflow-form" onSubmit={(event) => void saveLimits(event)}>
+            {limits && <ValidatedForm className="workflow-form" onSubmit={(event) => void saveLimits(event)}>
               <label>Requests per minute<input type="number" min={1} max={100000} required value={limits.requestsPerMinute} onChange={(event) => setLimits((current) => current ? { ...current, requestsPerMinute: Number(event.target.value) } : current)} disabled={!canUpdate || limitsSaving} /></label>
               <label>Burst requests per second<input type="number" min={1} max={10000} required value={limits.burstRequests} onChange={(event) => setLimits((current) => current ? { ...current, burstRequests: Number(event.target.value) } : current)} disabled={!canUpdate || limitsSaving} /></label>
               <label>Maximum active API keys<input type="number" min={1} max={100} required value={limits.maxApiKeys} onChange={(event) => setLimits((current) => current ? { ...current, maxApiKeys: Number(event.target.value) } : current)} disabled={!canUpdate || limitsSaving} /></label>
               <label>Maximum active credentials<input type="number" min={1} max={500} required value={limits.maxCredentials} onChange={(event) => setLimits((current) => current ? { ...current, maxCredentials: Number(event.target.value) } : current)} disabled={!canUpdate || limitsSaving} /></label>
               <label>Credential rotation reminder (minutes)<input type="number" min={1} max={525600} required value={limits.credentialRotationIntervalMinutes} onChange={(event) => setLimits((current) => current ? { ...current, credentialRotationIntervalMinutes: Number(event.target.value) } : current)} disabled={!canUpdate || limitsSaving} /></label>
               {canUpdate && <div className="workflow-form-actions"><button className="button button--primary" type="submit" disabled={limitsSaving || environment.status === "DEACTIVATED"}>{limitsSaving ? "Saving…" : "Save limits"}</button></div>}
-            </form>}
+            </ValidatedForm>}
           </section>
 
           <section id="environment-configuration" className="panel settings-group environment-configuration-panel">
@@ -521,12 +521,12 @@ export function EnvironmentPage() {
             <div className="settings-group-header"><div className="settings-group-title-wrap"><span className="settings-group-icon"><KeyRound size={17} /></span><div><h2>Environment credentials</h2><p>Encrypted inventory for environment secrets. Values cannot be viewed or consumed by runtime integrations yet; keep the source secret in your own secret manager. Reuse a name to create a new version, then revoke the old one.</p></div></div><span className="table-tag">ENCRYPTED</span></div>
             {credentialError && <p className="workflow-error" role="alert">{credentialError}</p>}
             {credentialMessage && <p className="workflow-success" role="status">{credentialMessage}</p>}
-            {canUpdate && environment.status === "ACTIVE" && <form className="workflow-form" onSubmit={(event) => void createCredential(event)}>
+            {canUpdate && environment.status === "ACTIVE" && <ValidatedForm className="workflow-form" onSubmit={(event) => void createCredential(event)}>
               <label>Credential name<input required maxLength={120} value={credentialName} onChange={(event) => setCredentialName(event.target.value)} disabled={credentialSaving} placeholder="payments-api" /></label>
               <label>Credential type<select value={credentialType} onChange={(event) => setCredentialType(event.target.value)} disabled={credentialSaving}>{["API_KEY", "WEBHOOK_SECRET", "HMAC_SECRET", "BASIC", "BEARER", "TLS_CERTIFICATE"].map((type) => <option key={type} value={type}>{type.replaceAll("_", " ")}</option>)}</select></label>
               <label>Secret value<input type="password" autoComplete="off" required maxLength={16384} value={credentialSecret} onChange={(event) => setCredentialSecret(event.target.value)} disabled={credentialSaving} /></label>
               <div className="workflow-form-actions"><button className="button button--primary" type="submit" disabled={credentialSaving || !credentialName.trim() || !credentialSecret.trim()}><Plus size={14} />{credentialSaving ? "Storing…" : "Store credential"}</button></div>
-            </form>}
+            </ValidatedForm>}
             {environment.status !== "ACTIVE" && <p className="workflow-hint">Credentials can only be changed while the environment is active.</p>}
             <div className="table-scroll"><table className="data-table"><thead><tr><th>NAME</th><th>TYPE</th><th>VERSION</th><th>STATUS</th><th>CREATED</th><th>ROTATION REMINDER</th>{canUpdate && <th>ACTIONS</th>}</tr></thead><tbody>{credentials.map((credential) => { const dueAt = limits ? new Date(new Date(credential.createdAt).getTime() + limits.credentialRotationIntervalMinutes * 60_000) : null; const overdue = credential.status === "ACTIVE" && dueAt !== null && dueAt.getTime() < Date.now(); return <tr key={credential.id}><td>{credential.name}</td><td>{credential.type}</td><td>{credential.version}</td><td>{credential.status}</td><td>{dateLabel(credential.createdAt)}</td><td>{dueAt ? <span className={overdue ? "workflow-error" : ""}>{overdue ? "Rotation due · " : "Due "}{dateLabel(dueAt.toISOString())}</span> : "Unavailable"}</td>{canUpdate && <td>{credential.status === "ACTIVE" && <button className="text-button text-button--danger" type="button" disabled={credentialSaving} onClick={() => void revokeCredential(credential)}><Trash2 size={13} />Revoke</button>}</td>}</tr>; })}{credentials.length === 0 && !credentialError && <tr><td colSpan={canUpdate ? 7 : 6}>No environment credentials have been registered.</td></tr>}</tbody></table></div>
           </section>

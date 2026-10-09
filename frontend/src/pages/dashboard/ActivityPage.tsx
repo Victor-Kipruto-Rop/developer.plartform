@@ -1,3 +1,4 @@
+import { getUserMessage } from "../../lib/errors";
 import { useEffect, useMemo, useState } from "react";
 import { Activity, ChevronLeft, ChevronRight, RefreshCw, Search } from "lucide-react";
 import { PageHeader } from "../../components/ui/PageHeader";
@@ -33,7 +34,7 @@ export function ActivityPage() {
       setTotal(result.totalElements);
       setTotalPages(result.totalPages);
     } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : "Could not load organization activity.");
+      setError(getUserMessage(requestError, "Could not load organization activity."));
     } finally {
       setLoading(false);
     }

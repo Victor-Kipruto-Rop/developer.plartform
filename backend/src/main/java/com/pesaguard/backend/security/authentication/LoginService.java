@@ -156,13 +156,9 @@ public class LoginService {
         securitySettingsService.assertPasswordLoginAllowed(settings);
         securitySettingsService.assertIpAllowed(settings, remoteAddress);
 
-        if (unfamiliarDeviceDetector.requiresEmailVerification(
-                membership.getUser().getId(), deviceLabel)) {
-            EmailLoginMfaChallenge challenge = emailVerificationService.issueLoginMfa(
-                    membership.getUser().getId(), membership.getOrganization().getId());
-            throw new LoginEmailMfaRequiredException(challenge);
-        }
-        return issueSession(membership, deviceLabel, remoteAddress);
+        EmailLoginMfaChallenge challenge = emailVerificationService.issueLoginMfa(
+                membership.getUser().getId(), membership.getOrganization().getId());
+        throw new LoginEmailMfaRequiredException(challenge);
     }
 
     @Transactional
@@ -221,6 +217,29 @@ public class LoginService {
         }
 
         emailVerificationService.confirm(identifier, code);
+        OrganizationSecuritySettings settings =
+                securitySettingsService.getOrCreate(membership.getOrganization().getId());
+        securitySettingsService.assertPasswordLoginAllowed(settings);
+        securitySettingsService.assertIpAllowed(settings, remoteAddress);
+        throttleService.clear("account", accountHash);
+        return issueSession(membership, deviceLabel, remoteAddress, "auth.registration.verified");
+    }
+
+    @Transactional
+    public AuthenticationResponse completeRegistrationVerificationByLink(
+            String token, String deviceLabel, String remoteAddress) {
+        String ipHash = subjectHash("ip", remoteAddress == null ? "unknown" : remoteAddress);
+        throttleService.assertAllowed("ip", ipHash, properties.security().ipLoginFailureLimit());
+
+        var verifiedAccount = emailVerificationService.confirmLegacyLink(token);
+        String accountHash = subjectHash("account", verifiedAccount.getEmail());
+        throttleService.assertAllowed("account", accountHash, properties.security().accountLoginFailureLimit());
+
+        OrganizationMembership membership = membershipRepository.findAllActiveByEmail(verifiedAccount.getEmail())
+                .stream()
+                .filter(candidate -> candidate.getUser().getId().equals(verifiedAccount.getId()))
+                .findFirst()
+                .orElseThrow(this::invalidCredentials);
         OrganizationSecuritySettings settings =
                 securitySettingsService.getOrCreate(membership.getOrganization().getId());
         securitySettingsService.assertPasswordLoginAllowed(settings);

@@ -1,3 +1,5 @@
+import { ValidatedForm } from "../../components/forms/ValidatedForm";
+import { getUserMessage } from "../../lib/errors";
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { createPortal } from "react-dom";
 import {
@@ -189,7 +191,7 @@ export function ApiKeysPage({ onNavigate }: { onNavigate: (page: PageId, apiKeyI
           : nextProjects.some((project) => project.id === selected) ? selected : nextProjects[0]?.id ?? "");
       })
       .catch((requestError: unknown) => {
-        if (current) setError(requestError instanceof Error ? requestError.message : "Could not load projects and credential scopes.");
+        if (current) setError(getUserMessage(requestError, "Could not load projects and credential scopes."));
       })
       .finally(() => {
         if (current) setLoading(false);
@@ -256,7 +258,7 @@ export function ApiKeysPage({ onNavigate }: { onNavigate: (page: PageId, apiKeyI
         if (current) setKeys(payload);
       })
       .catch((requestError: unknown) => {
-        if (current) setError(requestError instanceof Error ? requestError.message : "Could not load API keys.");
+        if (current) setError(getUserMessage(requestError, "Could not load API keys."));
       })
       .finally(() => {
         if (current) setLoading(false);
@@ -363,11 +365,11 @@ export function ApiKeysPage({ onNavigate }: { onNavigate: (page: PageId, apiKeyI
       try {
         await loadKeys();
       } catch (refreshError) {
-        const refreshMessage = refreshError instanceof Error ? refreshError.message : "The key list could not be refreshed.";
+        const refreshMessage = getUserMessage(refreshError, "The key list could not be refreshed.");
         setError(`The API key was created, but its list could not be refreshed. ${refreshMessage}`);
       }
     } catch (requestError) {
-      const message = requestError instanceof Error ? requestError.message : "Could not create the API key.";
+      const message = getUserMessage(requestError, "Could not create the API key.");
       setError(requestError instanceof ApiError && requestError.supportReference
         ? `${message} (Reference: ${requestError.supportReference})`
         : message);
@@ -421,7 +423,7 @@ export function ApiKeysPage({ onNavigate }: { onNavigate: (page: PageId, apiKeyI
       setSelectedKey(null);
       await loadKeys();
     } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : `Could not ${action} the API key.`);
+      setError(getUserMessage(requestError, `Could not ${action} the API key.`));
     } finally {
       setWorkingKeyId("");
     }
@@ -472,7 +474,7 @@ export function ApiKeysPage({ onNavigate }: { onNavigate: (page: PageId, apiKeyI
       setRenameTarget(null);
       setRenameValue("");
     } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : "Could not rename the API key.");
+      setError(getUserMessage(requestError, "Could not rename the API key."));
     } finally {
       setRenaming(false);
     }
@@ -681,7 +683,7 @@ export function ApiKeysPage({ onNavigate }: { onNavigate: (page: PageId, apiKeyI
                 </div>
                 <button className="credential-modal-close" type="button" aria-label="Close create API key dialog" disabled={saving} onClick={() => { setCreateDialogOpen(false); setError(""); }}><X size={18} /></button>
               </div>
-              <form onSubmit={(event) => void createKey(event)}>
+              <ValidatedForm onSubmit={(event) => void createKey(event)}>
                 <div className="credential-create-fields">
                   <div>
                     <label className="field-label" htmlFor="credential-project">Project</label>
@@ -739,7 +741,7 @@ export function ApiKeysPage({ onNavigate }: { onNavigate: (page: PageId, apiKeyI
                     <Plus size={15} />{saving ? "Creating…" : "Create API key"}
                   </button>
                 </div>
-              </form>
+              </ValidatedForm>
             </section>
           ) : revealedKey ? (
             <section className="credential-modal panel" role="dialog" aria-modal="true" aria-labelledby="credential-reveal-title">
@@ -771,12 +773,12 @@ export function ApiKeysPage({ onNavigate }: { onNavigate: (page: PageId, apiKeyI
               <div className="credential-modal-icon"><Pencil size={18} /></div>
               <h2 id="credential-rename-title">Rename API key</h2>
               <p>Change the label for <strong>{renameTarget.name}</strong>. Its secret and access remain unchanged.</p>
-              <form onSubmit={(event) => void renameKey(event)}>
+              <ValidatedForm onSubmit={(event) => void renameKey(event)}>
                 <label className="field-label" htmlFor="credential-rename-name">Key name</label>
                 <input id="credential-rename-name" className="field-control" value={renameValue} onChange={(event) => setRenameValue(event.target.value)} minLength={2} maxLength={120} required autoFocus />
                 {error && <p className="workflow-error" role="alert">{error}</p>}
                 <div className="credential-modal-actions"><button className="button button--secondary" type="button" disabled={renaming} onClick={() => setRenameTarget(null)}>Cancel</button><button className="button button--primary" type="submit" disabled={renaming || renameValue.trim().length < 2}>{renaming ? "Saving…" : "Save name"}</button></div>
-              </form>
+              </ValidatedForm>
             </section>
           ) : null}
         </div>

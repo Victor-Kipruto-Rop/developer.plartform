@@ -1,3 +1,4 @@
+import { getUserMessage } from "../../lib/errors";
 import { useEffect, useMemo, useState } from "react";
 import { Check, Clipboard, Eye, EyeOff, KeyRound, Play, ShieldCheck, Terminal, Timer } from "lucide-react";
 import { PageHeader } from "../../components/ui/PageHeader";
@@ -118,7 +119,7 @@ export function ApiExplorerPage() {
         if (nextProject && nextEnvironment) setActiveEnvironment(nextProject, nextEnvironment);
       })
       .catch((cause: unknown) => {
-        if (active) setEnvironmentError(cause instanceof Error ? cause.message : "Unable to load project environments.");
+        if (active) setEnvironmentError(getUserMessage(cause, "Unable to load project environments."));
       })
       .finally(() => {
         if (active) setEnvironmentLoading(false);
@@ -158,7 +159,7 @@ export function ApiExplorerPage() {
         }
       })
       .catch((cause: unknown) => {
-        if (active) setPreferencesError(cause instanceof Error ? cause.message : "Unable to load request preferences.");
+        if (active) setPreferencesError(getUserMessage(cause, "Unable to load request preferences."));
       })
       .finally(() => {
         if (active) setPolicyLoading(false);
@@ -232,10 +233,10 @@ export function ApiExplorerPage() {
         const reference = requestError.supportReference
           ? `\nReference: ${requestError.supportReference}`
           : "";
-        setError(`Request failed\n\n${requestError.message}\n\nStatus: ${requestError.status}${reference}`);
+        setError(`Request failed\n\n${getUserMessage(requestError, "We couldn't complete this request. Please try again.")}\n\nStatus: ${requestError.status}${reference}`);
       } else {
         setError(requestError instanceof NetworkRequestError
-          ? requestError.message
+          ? getUserMessage(requestError)
           : "We couldn't complete this request. Please try again.");
       }
     } finally {

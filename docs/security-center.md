@@ -115,22 +115,17 @@ be able to revoke production credentials.
 OWNER and SECURITY hold both. ADMIN and ANALYST hold read only. DEVELOPER and
 VIEWER hold neither.
 
-## Not implemented
+## Remaining work
 
-- **No detector runs.** All eight event types are defined and recordable, but
-  nothing raises them. No revoked-credential usage, token replay, scope abuse, or
-  abnormal-usage detection is wired.
-- **No controller, no endpoints, no OpenAPI.** The read model is unreachable.
-- **No `AuthSession` entity changes.** `device_label` and `last_ip` columns and
-  the `auth_session_revocations` table exist in V15, but the entity and the
-  session service were not updated to write them.
-- **No credential rotation or application suspension wiring.** The permissions
-  and rules exist; the actions are not implemented.
-- **No baseline for abnormal usage.** Detecting a deviation requires a per-key
-  history the platform does not currently compute.
-- **V15 has never executed.** Every constraint is unverified, including the
-  resolution-actor check and the detection dedup index.
-
+- Two detectors raise signals: unfamiliar-device sign-ins and refresh-token
+  replay. API-key misuse, allowlist violations, scope abuse, repeated failures,
+  suspicious webhook activity, and abnormal API-usage detectors remain.
+- The tenant-scoped controller exposes open signals, full history, and audited
+  resolution. OpenAPI documents these routes and their permission requirements.
+- Session device and IP fields are now updated by the session service.
+- Credential rotation and application suspension actions are still unwired.
+- Abnormal-usage detection still needs a reliable per-key history or baseline.
+- V15 and the current migration chain still require PostgreSQL-backed execution.
 ## Decisions to revisit
 
 - **The dedup index includes `detected_at`**, so it only collapses signals

@@ -1,3 +1,4 @@
+import { getUserMessage } from "../../lib/errors";
 import { useEffect, useState } from "react";
 import { ArrowRight, RefreshCw, Users } from "lucide-react";
 import type { PageId } from "../../app/routes";
@@ -38,7 +39,7 @@ export function MembersPage({ onNavigate }: { onNavigate: (page: PageId) => void
     try {
       setMembers(await apiData<Member[]>("/api/v1/organization/members"));
     } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : "Could not load organization members.");
+      setError(getUserMessage(requestError, "Could not load organization members."));
     } finally {
       setLoading(false);
     }
@@ -67,7 +68,7 @@ export function MembersPage({ onNavigate }: { onNavigate: (page: PageId) => void
       setMembers((current) => current.map((item) => item.id === updated.id ? updated : item));
       setNotice(status === "REVOKED" ? "Member removed." : `Member ${status === "ACTIVE" ? "reactivated" : "suspended"}.`);
     } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : "Could not update this member.");
+      setError(getUserMessage(requestError, "Could not update this member."));
     } finally {
       setSavingMemberId("");
     }
@@ -86,7 +87,7 @@ export function MembersPage({ onNavigate }: { onNavigate: (page: PageId) => void
       setMembers((current) => current.map((item) => item.id === updated.id ? updated : item));
       setNotice(`${updated.displayName || updated.email}'s role updated to ${updated.role}.`);
     } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : "Could not update this member's role.");
+      setError(getUserMessage(requestError, "Could not update this member's role."));
     } finally {
       setSavingMemberId("");
     }

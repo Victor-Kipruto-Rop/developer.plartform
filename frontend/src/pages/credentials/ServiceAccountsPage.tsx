@@ -1,3 +1,5 @@
+import { ValidatedForm } from "../../components/forms/ValidatedForm";
+import { getUserMessage } from "../../lib/errors";
 import { useEffect, useState, type FormEvent } from "react";
 import { Check, Copy, KeyRound, LoaderCircle, Plus, RotateCw, Shield, UserRoundCog, X } from "lucide-react";
 import { PageHeader } from "../../components/ui/PageHeader";
@@ -52,7 +54,7 @@ export function ServiceAccountsPage() {
       setAccounts(accountList);
       setAvailableScopes(scopes);
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Unable to load service accounts.");
+      setError(getUserMessage(cause, "Unable to load service accounts."));
     } finally {
       setLoading(false);
     }
@@ -76,7 +78,7 @@ export function ServiceAccountsPage() {
       setSelectedScopes([]);
       await load();
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Unable to create service account.");
+      setError(getUserMessage(cause, "Unable to create service account."));
     } finally {
       setSaving(false);
     }
@@ -106,7 +108,7 @@ export function ServiceAccountsPage() {
       setNotice(action === "revoke" ? "Service account revoked." : `Service account ${action === "rotate-secret" ? "secret rotated" : action + "d"}.`);
       await load();
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "The service-account action failed.");
+      setError(getUserMessage(cause, "The service-account action failed."));
     } finally {
       setWorkingId("");
     }
@@ -151,7 +153,7 @@ export function ServiceAccountsPage() {
       <div className="service-account-layout">
         <section className="panel">
           <div className="panel-heading"><div><h2>Create service account</h2><p>Granted scopes cannot exceed your current effective permissions.</p></div><UserRoundCog size={17} /></div>
-          <form className="service-account-form" onSubmit={(event) => void create(event)}>
+          <ValidatedForm className="service-account-form" onSubmit={(event) => void create(event)}>
             <label className="settings-field">Name
               <input className="field-control" value={name} onChange={(event) => setName(event.target.value)} minLength={2} maxLength={120} required />
             </label>
@@ -175,7 +177,7 @@ export function ServiceAccountsPage() {
               {saving ? <LoaderCircle size={14} className="spin" /> : <Plus size={14} />}
               {saving ? "Creating…" : "Create service account"}
             </button>
-          </form>
+          </ValidatedForm>
         </section>
 
         <section className="panel">

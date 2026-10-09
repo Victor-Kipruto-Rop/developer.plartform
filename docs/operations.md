@@ -3,9 +3,16 @@
 ## Health
 
 - `GET /health/live` checks process liveness.
-- `GET /health/ready` checks database connectivity.
-- Actuator liveness/readiness endpoints are also exposed under `/actuator/health/liveness` and `/actuator/health/readiness`.
+- `GET /health/ready` checks application readiness.
+- In Kubernetes production, Actuator liveness/readiness and Prometheus metrics
+  listen on the private management port `9090`; Kubernetes probes and the
+  monitoring namespace are the only permitted network peers. Readiness includes
+  PostgreSQL and Redis.
 - Health responses must not disclose dependency credentials or internal connection details.
+
+See the [operations runbook](./operations-runbook.md) for the protected CI
+environment configuration, immutable image promotion, deployment checks, and
+the operational verifications that still require target-environment access.
 
 ## Database
 

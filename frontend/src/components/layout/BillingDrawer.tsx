@@ -1,3 +1,5 @@
+import { ValidatedForm } from "../forms/ValidatedForm";
+import { getUserMessage } from "../../lib/errors";
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
 import { AlertCircle, CircleHelp, ExternalLink, RefreshCw } from "lucide-react";
 import { apiData } from "../../lib/api";
@@ -90,7 +92,7 @@ export function BillingDrawer({ connected }: BillingDrawerProps) {
         return next;
       });
     } catch (cause) {
-      if (!signal?.aborted) setError(cause instanceof Error ? cause.message : "Unable to load billing records.");
+      if (!signal?.aborted) setError(getUserMessage(cause, "Unable to load billing records."));
     } finally {
       if (!signal?.aborted) setLoading(false);
     }
@@ -126,7 +128,7 @@ export function BillingDrawer({ connected }: BillingDrawerProps) {
       setNotice("Your invoice request was submitted.");
       await loadOverview();
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Unable to submit the invoice request.");
+      setError(getUserMessage(cause, "Unable to submit the invoice request."));
     } finally {
       setBusyAction("");
     }
@@ -141,7 +143,7 @@ export function BillingDrawer({ connected }: BillingDrawerProps) {
       setNotice(payment.checkoutUrl ? "Secure checkout is ready." : "The payment provider has not returned a checkout link.");
       await loadOverview();
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Unable to retry Stripe checkout.");
+      setError(getUserMessage(cause, "Unable to retry Stripe checkout."));
     } finally {
       setBusyAction("");
     }
@@ -171,7 +173,7 @@ export function BillingDrawer({ connected }: BillingDrawerProps) {
       await loadOverview();
     } catch (cause) {
       await loadOverview();
-      setError(cause instanceof Error ? cause.message : "Unable to start payment.");
+      setError(getUserMessage(cause, "Unable to start payment."));
     } finally {
       setBusyAction("");
     }
@@ -184,7 +186,7 @@ export function BillingDrawer({ connected }: BillingDrawerProps) {
       await apiData<Payment>(`/api/v1/billing/payments/${paymentId}/refresh`, { method: "POST" });
       await loadOverview();
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Unable to refresh payment status.");
+      setError(getUserMessage(cause, "Unable to refresh payment status."));
     } finally {
       setBusyAction("");
     }
@@ -199,7 +201,7 @@ export function BillingDrawer({ connected }: BillingDrawerProps) {
       setNotice("Manual settlement was cancelled.");
       await loadOverview();
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Unable to cancel manual settlement.");
+      setError(getUserMessage(cause, "Unable to cancel manual settlement."));
     } finally {
       setBusyAction("");
     }
@@ -300,14 +302,14 @@ export function BillingDrawer({ connected }: BillingDrawerProps) {
 
           <section className="billing-section" aria-labelledby="billing-requests-title">
             <h3 id="billing-requests-title">Invoice requests</h3>
-            <form className="billing-request-form" onSubmit={(event) => void requestInvoice(event)}>
+            <ValidatedForm className="billing-request-form" onSubmit={(event) => void requestInvoice(event)}>
               <label htmlFor="billing-request-description">What would you like invoiced?</label>
               <textarea id="billing-request-description" value={description} maxLength={1000} required
                 onChange={(event) => setDescription(event.target.value)} rows={3} />
               <button type="submit" className="billing-primary-button" disabled={busyAction === "invoice-request" || !description.trim()}>
                 {busyAction === "invoice-request" ? "Submitting…" : "Request an invoice"}
               </button>
-            </form>
+            </ValidatedForm>
             {overview.invoiceRequests.length === 0 ? <p className="billing-empty">No invoice requests have been submitted.</p>
               : overview.invoiceRequests.map((request) => (
                 <article className="billing-record billing-record--compact" key={request.id}>

@@ -1,3 +1,4 @@
+import { getUserMessage } from "../../lib/errors";
 import {
   Activity,
   ArrowRight,
@@ -88,7 +89,7 @@ export function ExternalIntegrationsPage({ onNavigate }: ExternalIntegrationsPag
             ? "The integration provider catalog request timed out."
             : error instanceof TypeError
               ? "The integration catalog API could not be reached. Check the API base URL, network, and backend availability."
-            : error instanceof Error ? error.message : "Could not load the integration provider catalog.");
+            : getUserMessage(error, "Could not load the integration provider catalog."));
         }
       })
       .finally(() => {

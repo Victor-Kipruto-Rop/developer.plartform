@@ -1,3 +1,4 @@
+import { getUserMessage } from "../../lib/errors";
 import { Activity, AlertCircle, CheckCircle2, Download, Gauge, RefreshCw, TimerReset, TrendingUp } from "lucide-react";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { PageHeader } from "../../components/ui/PageHeader";
@@ -171,7 +172,7 @@ export function UsagePage({ apiKeyId }: { apiKeyId?: string }) {
         }
       })
       .catch((requestError: unknown) => {
-        if (!controller.signal.aborted) setProjectError(requestError instanceof Error ? requestError.message : "Unable to load projects.");
+        if (!controller.signal.aborted) setProjectError(getUserMessage(requestError, "Unable to load projects."));
       });
     return () => controller.abort();
   }, [isAuthenticated, retryKey]);
@@ -201,7 +202,7 @@ export function UsagePage({ apiKeyId }: { apiKeyId?: string }) {
         }
       })
       .catch((requestError: unknown) => {
-        if (!controller.signal.aborted) setEnvironmentError(requestError instanceof Error ? requestError.message : "Unable to load environments.");
+        if (!controller.signal.aborted) setEnvironmentError(getUserMessage(requestError, "Unable to load environments."));
       });
     return () => controller.abort();
   }, [isAuthenticated, projectId, retryKey]);
@@ -249,7 +250,7 @@ export function UsagePage({ apiKeyId }: { apiKeyId?: string }) {
       .catch((requestError: unknown) => {
         if (!controller.signal.aborted) {
           setSeries(null);
-          setError(requestError instanceof Error ? requestError.message : "Unable to load usage.");
+          setError(getUserMessage(requestError, "Unable to load usage."));
         }
       })
       .finally(() => {
@@ -281,7 +282,7 @@ export function UsagePage({ apiKeyId }: { apiKeyId?: string }) {
         setEndpoints(response);
       })
       .catch((requestError: unknown) => {
-        if (!controller.signal.aborted) setEndpointError(requestError instanceof Error ? requestError.message : "Unable to load observed endpoints.");
+        if (!controller.signal.aborted) setEndpointError(getUserMessage(requestError, "Unable to load observed endpoints."));
       })
       .finally(() => {
         if (!controller.signal.aborted) setEndpointLoading(false);
@@ -319,7 +320,7 @@ export function UsagePage({ apiKeyId }: { apiKeyId?: string }) {
       link.click();
       window.setTimeout(() => URL.revokeObjectURL(url), 0);
     } catch (requestError) {
-      setExportError(requestError instanceof Error ? requestError.message : "Usage export failed.");
+      setExportError(getUserMessage(requestError, "Usage export failed."));
     } finally {
       setExporting(false);
     }

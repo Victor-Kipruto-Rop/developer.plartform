@@ -95,7 +95,7 @@ export type AuthSession = {
 
 export type RegistrationResponse = {
   email: string;
-  organizationName?: string;
+  organizationName: string;
   verificationRequired: boolean;
   verificationExpiresAt?: string | null;
   verificationResendAvailableAt?: string | null;
@@ -201,7 +201,7 @@ export type RegisterRequest = {
   email: string;
   password: string;
   displayName: string;
-  organizationName?: string;
+  organizationName: string;
   organizationDescription?: string;
   termsAccepted: boolean;
   username?: string;

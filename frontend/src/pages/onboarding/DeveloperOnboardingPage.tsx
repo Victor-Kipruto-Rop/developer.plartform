@@ -1,10 +1,11 @@
+import { ValidatedForm } from "../../components/forms/ValidatedForm";
+import { getUserMessage } from "../../lib/errors";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { ArrowRight, Check, CheckCircle2, CircleHelp, Copy, Eye, EyeOff, KeyRound, LoaderCircle, LockKeyhole, Mail, ShieldCheck, Users } from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
 import { ApiError, apiData, apiFetch, safeUserErrorMessage } from "../../lib/api";
 import { copyTextToClipboard } from "../../lib/clipboard";
 import * as authApi from "../../lib/authApi";
-import { usernameValidationMessage } from "../../lib/usernameValidation";
 import type { DeveloperOnboardingStatus, DeveloperOnboardingStep, LoginEmailMfaChallenge } from "../../types/auth";
 import "../../styles/onboarding.css";
 
@@ -54,7 +55,7 @@ function invitationActionError(error: unknown, fallback: string): string {
     case "MEMBER_ALREADY_EXISTS":
       return "You are already a member of this organization. Switch to it from your workspace menu.";
     default:
-      return error.message || fallback;
+      return safeUserErrorMessage(error, fallback);
   }
 }
 
@@ -75,7 +76,7 @@ export function DeveloperOnboardingPage({
   nextStep?: "profile" | "organization" | "project" | "environment" | "complete";
   onboardingStatus?: DeveloperOnboardingStatus;
 }) {
-  const { login, verifyLoginEmailMfa, completeRegistrationVerification, resendLoginEmailMfa, register, reload, status, challenge: authChallenge, organization, user, hasPermission, isAuthenticated, switchWorkspace } = useAuth();
+  const { login, verifyLoginEmailMfa, completeRegistrationVerification, completeRegistrationVerificationByLink, resendLoginEmailMfa, register, reload, status, challenge: authChallenge, organization, user, hasPermission, isAuthenticated, switchWorkspace } = useAuth();
   const [invitationToken] = useState(() => (initialStep === "invitation" || window.location.pathname.replace(/\/$/, "") === "/accept-invitation"
     ? new URLSearchParams(window.location.search).get("token")
     : null)
@@ -119,8 +120,6 @@ export function DeveloperOnboardingPage({
   });
   const [authMode, setAuthMode] = useState<"signup" | "signin">(initialMode);
   const [displayName, setDisplayName] = useState(user?.displayName ?? "");
-  const [username, setUsername] = useState("");
-  const [usernameTouched, setUsernameTouched] = useState(false);
   const [newOrganizationName, setNewOrganizationName] = useState(onboardingStatus?.organizationName ?? organization?.name ?? "");
   const [newOrganizationDescription, setNewOrganizationDescription] = useState(onboardingStatus?.organizationDescription ?? "");
   const [email, setEmail] = useState("");
@@ -178,7 +177,6 @@ export function DeveloperOnboardingPage({
   const loginMfaCode = loginMfaDigits.join("");
   const passwordMismatch = confirmPassword.length > 0 && confirmPassword !== password;
   const passwordMatch = confirmPassword.length > 0 && confirmPassword === password;
-  const usernameError = usernameTouched ? usernameValidationMessage(username, email) : null;
   const verificationSeconds = verificationExpiresAt === null
     ? 0
     : Math.max(0, Math.ceil((verificationExpiresAt - clockNow) / 1000));
@@ -278,7 +276,7 @@ export function DeveloperOnboardingPage({
         setVerificationStatus("expired");
       } else if (apiError?.code === "RATE_LIMITED") {
         setVerificationStatus("error");
-        setError(apiError.message || "Too many requests. Wait a moment before trying again.");
+        setError(safeUserErrorMessage(apiError, "Too many requests. Wait a moment before trying again."));
         await new Promise<void>((resolve) => window.setTimeout(resolve, 520));
         setVerificationStatus("idle");
         focusVerificationCode(EMAIL_VERIFICATION_CODE_LENGTH - 1);
@@ -288,7 +286,7 @@ export function DeveloperOnboardingPage({
         setVerificationExpiresAt(expiredAt);
         setClockNow(expiredAt);
         setVerificationStatus("locked");
-        setError(apiError.message || "Too many attempts. Request a new code to continue.");
+        setError(safeUserErrorMessage(apiError, "Too many attempts. Request a new code to continue."));
       } else if (apiError?.code === "ALREADY_VERIFIED" || apiError?.code === "VERIFIED") {
         setVerificationStatus("success");
         setVerificationNotice("Your email is verified. Sign in to continue.");
@@ -344,7 +342,7 @@ export function DeveloperOnboardingPage({
       verificationInFlight.current = false;
       return;
     }
-    setStep("welcome");
+    await onComplete();
     setBusy(false);
     verificationInFlight.current = false;
   }
@@ -467,8 +465,7 @@ export function DeveloperOnboardingPage({
         setStep("security");
       })
       .catch((workflowError: unknown) => {
-        if (active) setError(workflowError instanceof Error
-          ? workflowError.message : "Your onboarding progress could not be loaded.");
+        if (active) setError(getUserMessage(workflowError, "Your onboarding progress could not be loaded."));
       });
     return () => { active = false; };
   }, [status, setupRequired]);
@@ -494,19 +491,16 @@ export function DeveloperOnboardingPage({
     if (!verificationToken || verificationStarted.current) return;
     verificationStarted.current = true;
     setBusy(true);
-    void authApi.verifyEmail(verificationToken)
+    void completeRegistrationVerificationByLink(verificationToken)
       .then(() => {
-        setVerificationNotice("Your email is verified. Sign in to continue.");
-        setAuthMode("signin");
-        setStep("verify");
+        if (invitationToken) setStep("invitation");
+        else void onComplete();
       })
       .catch((verificationError: unknown) => {
-        setError(verificationError instanceof Error
-          ? verificationError.message
-          : "This verification link is invalid or has expired.");
+        setError(getUserMessage(verificationError, "This verification link is invalid or has expired."));
       })
       .finally(() => setBusy(false));
-  }, []);
+  }, [completeRegistrationVerificationByLink, invitationToken, onComplete, verificationToken]);
 
   useEffect(() => {
     if (!invitationToken) return;
@@ -516,9 +510,7 @@ export function DeveloperOnboardingPage({
         if (active) setInvitationPreview(preview);
       })
       .catch((previewError: unknown) => {
-        if (active) setError(previewError instanceof Error
-          ? previewError.message
-          : "This invitation could not be loaded. Ask the organization administrator to send it again.");
+        if (active) setError(getUserMessage(previewError, "This invitation could not be loaded. Ask the organization administrator to send it again."));
       });
     return () => { active = false; };
   }, [invitationToken]);
@@ -562,14 +554,6 @@ export function DeveloperOnboardingPage({
   async function submitAuth(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError("");
-    if (authMode === "signup") {
-      const usernameValidationError = usernameValidationMessage(username, email);
-      setUsernameTouched(true);
-      if (usernameValidationError) {
-        setError(usernameValidationError);
-        return;
-      }
-    }
     if (authMode === "signup" && password !== confirmPassword) {
       setError("Passwords do not match.");
       return;
@@ -595,7 +579,7 @@ export function DeveloperOnboardingPage({
         && authError.mfaEnrollmentToken) {
         await enterMfaEnrollment(authError.mfaEnrollmentToken);
       } else if (authError instanceof ApiError && (authError.code === "RATE_LIMITED" || authError.status === 429)) {
-        setError(authError.message || "Too many sign-in requests. Wait a moment before trying again.");
+        setError(safeUserErrorMessage(authError, "Too many sign-in requests. Wait a moment before trying again."));
       } else if (authError instanceof ApiError && authError.code === "EMAIL_NOT_VERIFIED") {
         setEmail(authError.verificationEmail || email.trim());
         startVerificationCountdown(
@@ -627,12 +611,6 @@ export function DeveloperOnboardingPage({
       setError("Accept the terms to create an account.");
       return;
     }
-    const usernameValidationError = usernameValidationMessage(username, email);
-    setUsernameTouched(true);
-    if (usernameValidationError) {
-      setError(usernameValidationError);
-      return;
-    }
     setBusy(true);
     setError("");
     try {
@@ -640,10 +618,9 @@ export function DeveloperOnboardingPage({
         email.trim(),
         password,
         displayName.trim(),
-        newOrganizationName.trim() || undefined,
+        newOrganizationName.trim(),
         newOrganizationDescription.trim() || undefined,
         acceptedTerms,
-        username,
       );
       setEmail(result.email);
       if (result.verificationRequired) {
@@ -653,12 +630,12 @@ export function DeveloperOnboardingPage({
           result.serverNow,
         );
         setVerificationNotice(
-          `Use ${result.username || username} to sign in. Enter the six-digit verification code sent to ${redactEmailAddress(result.email)}.`,
+          `Enter the six-digit verification code sent to ${redactEmailAddress(result.email)} to finish creating ${result.organizationName}.`,
         );
         setStep("verify");
       } else {
         setVerificationNotice(
-          `Your account for ${result.email} was created. Sign in with ${result.username || username}.`,
+          `Your organization ${result.organizationName} is ready. Sign in with your email address.`,
         );
         setAuthMode("signin");
       }
@@ -1002,8 +979,7 @@ export function DeveloperOnboardingPage({
       setMfaRecoveryCodes([]);
       setStep("profile");
     } catch (securityError) {
-      setError(securityError instanceof Error
-        ? securityError.message : "Security setup could not be saved.");
+      setError(getUserMessage(securityError, "Security setup could not be saved."));
     } finally {
       setBusy(false);
     }
@@ -1105,7 +1081,7 @@ export function DeveloperOnboardingPage({
     <main className={`onboarding-page${accountFlow ? ` onboarding-page--account onboarding-page--${step}${step === "auth" ? ` onboarding-page--${authMode}` : ""}` : ""}`}>
       <header className="onboarding-topbar">
         <a className="onboarding-brand" href="/" aria-label="PesaGuard developer home">
-          <img src="/pesaguard-icon.svg" alt="" width="32" height="35" />
+          <img src="/pesaguard-brand-mark.svg" alt="" width="34" height="36" />
           <span>PesaGuard</span>
         </a>
         <nav className="onboarding-topbar-actions" aria-label="Onboarding help">
@@ -1208,7 +1184,7 @@ export function DeveloperOnboardingPage({
               <span className="onboarding-step-label">EMAIL VERIFICATION</span>
               <h2 id="onboarding-title">{verificationStatus === "success" || verificationNotice.startsWith("Your email") ? "Email verified" : "Verify your email"}</h2>
               <p role={verificationNotice ? "status" : undefined}>{verificationNotice || `Enter the six-digit code sent to ${redactEmailAddress(email)}. It expires 10 minutes after it was sent.`}</p>
-              <form className="onboarding-form onboarding-email-form" onSubmit={submitVerificationCode} aria-busy={busy}>
+              <ValidatedForm className="onboarding-form onboarding-email-form" onSubmit={submitVerificationCode} aria-busy={busy}>
                 <div className="onboarding-email-redacted" aria-label={`Verification email ${redactEmailAddress(email)}`}>
                   <span>Email address</span>
                   <strong>{redactEmailAddress(email)}</strong>
@@ -1260,7 +1236,7 @@ export function DeveloperOnboardingPage({
                         : `Code expires in ${String(Math.floor(verificationSeconds / 60)).padStart(2, "0")}:${String(verificationSeconds % 60).padStart(2, "0")}`}
                   </span>}
                 </div>}
-              </form>
+              </ValidatedForm>
               {!verificationNotice.startsWith("Your email") && verificationStatus !== "success" && <button className="onboarding-secondary onboarding-resend-code" type="button" aria-busy={verificationStatus === "sending"} onClick={() => void resendVerificationCode()} disabled={busy || resendSeconds > 0 || !email.trim()}>
                 {verificationStatus === "sending"
                   ? <><LoaderCircle size={15} aria-hidden="true" /> Sending…</>
@@ -1296,12 +1272,11 @@ export function DeveloperOnboardingPage({
                 <button type="button" aria-pressed={authMode === "signup"} onClick={() => changeAuthMode("signup")}>Create account</button>
                 <button type="button" aria-pressed={authMode === "signin"} onClick={() => changeAuthMode("signin")}>Sign in</button>
               </div>
-              <form ref={authForm} className="onboarding-form" onSubmit={submitAuth} aria-busy={busy} key={`${step}-${authMode}`}>
+              <ValidatedForm ref={authForm} className="onboarding-form" onSubmit={submitAuth} aria-busy={busy} key={`${step}-${authMode}`}>
                 {authMode === "signup" && <>
                   <label>Your name<input autoComplete="name" required minLength={2} maxLength={120} value={displayName} onChange={(event) => setDisplayName(event.target.value)} /></label>
                 </>}
-                <label>{authMode === "signup" ? "Email address" : "Email address or username"}<input type={authMode === "signup" ? "email" : "text"} autoComplete={authMode === "signup" ? "email" : "username"} inputMode={authMode === "signup" ? "email" : undefined} required value={email} onChange={(event) => { setEmail(event.target.value); setError(""); }} /></label>
-                {authMode === "signup" && <label>Username<input autoComplete="username" aria-invalid={Boolean(usernameError) || undefined} aria-describedby={usernameError ? "onboarding-username-error" : undefined} value={username} onBlur={() => setUsernameTouched(true)} onChange={(event) => { setUsername(event.target.value); setUsernameTouched(true); setError(""); }} />{usernameError && <small className="onboarding-field-error" id="onboarding-username-error" role="status">{usernameError}</small>}</label>}
+                <label>Email address<input type="email" autoComplete="email" inputMode="email" required value={email} onChange={(event) => { setEmail(event.target.value); setError(""); }} /></label>
                 <div className="onboarding-password-group">
                   <label htmlFor="account-password">Password</label>
                   <div className="onboarding-password-field">
@@ -1333,7 +1308,7 @@ export function DeveloperOnboardingPage({
                 <button className="onboarding-primary" type="submit" disabled={busy}>
                   {busy ? <><LoaderCircle size={17} aria-hidden="true" /> {authMode === "signup" ? "Continuing…" : "Signing in…"}</> : <>{authMode === "signup" ? "Continue to organization setup" : "Sign in"}<ArrowRight size={17} /></>}
                 </button>
-              </form>
+              </ValidatedForm>
               <p className="onboarding-footnote">Registration must be enabled by the platform administrator. Your password is sent only to the PesaGuard API over HTTPS.</p>
               {authMode === "signin" && (
                 <div className="onboarding-auth-links">
@@ -1377,7 +1352,7 @@ export function DeveloperOnboardingPage({
             <p>{loginMfaChallenge
               ? `Enter the six-digit sign-in code sent to ${loginMfaChallenge.maskedEmail}.`
               : "Your sign-in verification has expired. Return to sign in to request a new code."}</p>
-            {loginMfaChallenge ? <form className="onboarding-form onboarding-email-form onboarding-login-mfa-form" onSubmit={(event) => void submitLoginEmailMfa(event)} aria-busy={busy}>
+            {loginMfaChallenge ? <ValidatedForm className="onboarding-form onboarding-email-form onboarding-login-mfa-form" onSubmit={(event) => void submitLoginEmailMfa(event)} aria-busy={busy}>
               <fieldset className="onboarding-code-fieldset" aria-describedby="login-mfa-code-hint" disabled={busy || loginMfaExpired}>
                 <legend>Sign-in code</legend>
                 <div
@@ -1420,7 +1395,7 @@ export function DeveloperOnboardingPage({
               <button className="onboarding-primary" type="submit" disabled={busy || loginMfaExpired || loginMfaCode.length !== EMAIL_VERIFICATION_CODE_LENGTH}>
                 {busy ? <><LoaderCircle size={17} aria-hidden="true" /> Verifying…</> : <>Verify and sign in<ArrowRight size={17} /></>}
               </button>
-            </form> : <p className="onboarding-error" role="alert">This sign-in challenge is no longer available. Return to sign in to request a new code.</p>}
+            </ValidatedForm> : <p className="onboarding-error" role="alert">This sign-in challenge is no longer available. Return to sign in to request a new code.</p>}
             <button className="onboarding-secondary onboarding-resend-code" type="button" disabled={busy || !loginMfaChallenge || loginMfaResendSeconds > 0}
               onClick={() => void resendLoginEmailCode()}>
               {loginMfaResendSeconds > 0 ? `Resend code in ${loginMfaResendSeconds}s` : "Resend sign-in code"}
@@ -1460,7 +1435,7 @@ export function DeveloperOnboardingPage({
                 <label>Authenticator setup URI<input readOnly value={mfaEnrollment.provisioningUri} /></label>
                 <label>Manual setup key<input readOnly value={mfaEnrollment.secret} /></label>
               </div>}
-              <form className="onboarding-form" onSubmit={(event) => void confirmRequiredMfaEnrollment(event)} aria-busy={busy}>
+              <ValidatedForm className="onboarding-form" onSubmit={(event) => void confirmRequiredMfaEnrollment(event)} aria-busy={busy}>
                 <label>Authenticator code<input autoComplete="one-time-code" inputMode="numeric" minLength={6}
                   maxLength={6} required value={mfaEnrollmentCode}
                   onChange={(event) => setMfaEnrollmentCode(event.target.value.replace(/\D/g, "").slice(0, 6))} /></label>
@@ -1469,7 +1444,7 @@ export function DeveloperOnboardingPage({
                   disabled={busy || !mfaEnrollment || mfaEnrollmentCode.length !== 6}>
                   {busy ? "Verifying authenticator…" : "Verify authenticator"} <ArrowRight size={17} />
                 </button>
-              </form>
+              </ValidatedForm>
             </>}
           </div>}
 
@@ -1499,13 +1474,13 @@ export function DeveloperOnboardingPage({
                   <label>Authenticator setup URI<input readOnly value={mfaEnrollment.provisioningUri} /></label>
                   <label>Manual setup key<input readOnly value={mfaEnrollment.secret} /></label>
                 </div>}
-                <form className="onboarding-form" onSubmit={(event) => void confirmRequiredMfaEnrollment(event)} aria-busy={busy}>
+                <ValidatedForm className="onboarding-form" onSubmit={(event) => void confirmRequiredMfaEnrollment(event)} aria-busy={busy}>
                   <label>Authenticator code<input autoComplete="one-time-code" inputMode="numeric" minLength={6} maxLength={6} required value={mfaEnrollmentCode} onChange={(event) => setMfaEnrollmentCode(event.target.value.replace(/\D/g, "").slice(0, 6))} /></label>
                   {error && <p className="onboarding-error" role="alert">{error}</p>}
                   <button className="onboarding-primary" type="submit" disabled={busy || !mfaEnrollment || mfaEnrollmentCode.length !== 6}>
                     {busy ? "Verifying…" : "Verify authenticator and save recovery codes"} <ArrowRight size={17} />
                   </button>
-                </form>
+                </ValidatedForm>
                 <button className="onboarding-secondary" type="button" onClick={() => {
                   setMfaEnrollmentToken("");
                   setMfaEnrollment(null);
@@ -1519,7 +1494,7 @@ export function DeveloperOnboardingPage({
             <span className="onboarding-step-label">ACCOUNT RECOVERY</span>
             <h2 id="onboarding-title">{verificationNotice ? "Check your inbox" : "Reset your password"}</h2>
             <p role={verificationNotice ? "status" : undefined}>{verificationNotice || "Enter the email address linked to your account. If it matches, we’ll send a secure, time-limited reset link."}</p>
-            <form className="onboarding-form onboarding-email-form" onSubmit={async (event) => {
+            <ValidatedForm className="onboarding-form onboarding-email-form" onSubmit={async (event) => {
               event.preventDefault(); setBusy(true); setError("");
               try {
                 await authApi.forgotPassword({ email: email.trim() });
@@ -1531,7 +1506,7 @@ export function DeveloperOnboardingPage({
               <label>Email address<input type="email" autoComplete="email" required value={email} onChange={(event) => { setEmail(event.target.value); if (verificationNotice) setVerificationNotice(""); }} /></label>
               {error && <p className="onboarding-error" role="alert">{error}</p>}
               <button className="onboarding-primary" type="submit" disabled={busy}>{busy ? <><LoaderCircle size={17} aria-hidden="true" /> Checking account…</> : <>Send reset link<ArrowRight size={17} /></>}</button>
-            </form>
+            </ValidatedForm>
             <button className="onboarding-secondary" type="button" onClick={() => { setStep("auth"); setAuthMode("signin"); }}>Return to sign in</button>
           </div>}
 
@@ -1545,7 +1520,7 @@ export function DeveloperOnboardingPage({
                 : "This password reset link is missing its token. Request a new link to continue."}</p>
               <button className="onboarding-secondary" type="button" onClick={() => { setResetTokenExpired(false); setError(""); setStep("forgot"); }}>Request a new reset link</button>
             </>}
-            {recoveryToken && !resetTokenExpired && <form className="onboarding-form" onSubmit={async (event) => {
+            {recoveryToken && !resetTokenExpired && <ValidatedForm className="onboarding-form" onSubmit={async (event) => {
               event.preventDefault();
               if (!recoveryToken) { setError("This password reset link is invalid or has expired."); return; }
               if (password !== confirmPassword) { setError("Passwords do not match."); return; }
@@ -1590,7 +1565,7 @@ export function DeveloperOnboardingPage({
               </div>
               {error && <p className="onboarding-error" role="alert">{error}</p>}
               <button className="onboarding-primary" type="submit" disabled={busy}>{busy ? <><LoaderCircle size={17} aria-hidden="true" /> Updating password…</> : <>Update password<ArrowRight size={17} /></>}</button>
-            </form>}
+            </ValidatedForm>}
           </div>}
 
           {step === "locked" && <div className="onboarding-stage">
@@ -1623,11 +1598,11 @@ export function DeveloperOnboardingPage({
               <h2 id="onboarding-title">Tell us your name</h2>
               <p>Your profile name appears in your developer workspace and activity history.</p>
             </div>
-            <form className="onboarding-form" onSubmit={saveProfile}>
+            <ValidatedForm className="onboarding-form" onSubmit={saveProfile}>
               <label>Full name<input autoFocus required minLength={2} maxLength={120} value={displayName} onChange={(event) => setDisplayName(event.target.value)} /></label>
               {error && <p className="onboarding-error" role="alert">{error}</p>}
               <button className="onboarding-primary" type="submit" disabled={busy}>{busy ? "Saving…" : "Save profile"}<ArrowRight size={17} /></button>
-            </form>
+            </ValidatedForm>
           </>}
 
           {step === "organization" && (
@@ -1637,14 +1612,14 @@ export function DeveloperOnboardingPage({
                 <h2 id="onboarding-title">{status === "authenticated" && onboardingStatus?.organizationReady ? "Review your organization" : "Create your organization"}</h2>
                 <p>Organizations group your projects and team access. This organization is created only after you submit these details.</p>
               </div>
-              <form className="onboarding-form" onSubmit={submitOrganizationStep} aria-busy={busy}>
+              <ValidatedForm className="onboarding-form" onSubmit={submitOrganizationStep} aria-busy={busy}>
                 <label>Organization name<input autoFocus required minLength={2} maxLength={120} value={newOrganizationName} onChange={(event) => setNewOrganizationName(event.target.value)} /></label>
                 <label>Description<textarea required minLength={10} maxLength={500} rows={4} value={newOrganizationDescription} onChange={(event) => setNewOrganizationDescription(event.target.value)} /></label>
                 {error && <p className="onboarding-error" role="alert">{error}</p>}
                 <button className="onboarding-primary" type="submit" disabled={busy}>{busy
                   ? status === "authenticated" ? "Saving organization…" : "Creating account…"
                   : status === "authenticated" ? "Save and continue" : "Create account and organization"}<ArrowRight size={17} /></button>
-              </form>
+              </ValidatedForm>
               {status !== "authenticated" && <button className="onboarding-secondary" type="button" disabled={busy} onClick={() => { setError(""); setStep("auth"); }}>Back to account details</button>}
             </>
           )}
@@ -1656,7 +1631,7 @@ export function DeveloperOnboardingPage({
                 <h2 id="onboarding-title">{bootstrap?.project.id ? "Your project is ready" : "Create your first project"}</h2>
                 <p>Choose a project name and starter. This creates only the project; you will select and create its environment next.</p>
               </div>
-              {!bootstrap?.project.id ? <form className="onboarding-form" onSubmit={createProject}>
+              {!bootstrap?.project.id ? <ValidatedForm className="onboarding-form" onSubmit={createProject}>
                 <label>Project name<input autoFocus required minLength={2} maxLength={120} placeholder="Project name" value={projectName} onChange={(event) => setProjectName(event.target.value)} /></label>
                 <fieldset className="onboarding-template-options">
                   <legend>Starter template</legend>
@@ -1677,7 +1652,7 @@ export function DeveloperOnboardingPage({
                   {busy ? "Creating project…" : "Create project"}
                   {!busy && <ArrowRight size={17} />}
                 </button>
-              </form> : <div className="onboarding-stage">
+              </ValidatedForm> : <div className="onboarding-stage">
                 <p><strong>{bootstrap.project.name}</strong> is ready. No environment or key has been created yet.</p>
                 <button className="onboarding-primary" type="button" disabled={busy} onClick={() => void advanceWizard("environment", "project")}>Continue to environment <ArrowRight size={17} /></button>
               </div>}
@@ -1690,12 +1665,12 @@ export function DeveloperOnboardingPage({
               <span className="onboarding-step-label">STEP 3 · ENVIRONMENT</span>
               <h2 id="onboarding-title">{bootstrap?.environment ? "Sandbox environment ready" : "Select an environment"}</h2>
               <p>A sandbox keeps test requests and test credentials separate from production.</p>
-              {bootstrap?.environment ? <button className="onboarding-primary" type="button" disabled={busy} onClick={() => void advanceWizard("api-key", "environment")}>Continue to API key <ArrowRight size={17} /></button> : <form className="onboarding-form" onSubmit={createEnvironment}>
+              {bootstrap?.environment ? <button className="onboarding-primary" type="button" disabled={busy} onClick={() => void advanceWizard("api-key", "environment")}>Continue to API key <ArrowRight size={17} /></button> : <ValidatedForm className="onboarding-form" onSubmit={createEnvironment}>
                 <label>Environment name<input autoFocus required minLength={2} maxLength={80} value={environmentName} onChange={(event) => setEnvironmentName(event.target.value)} /></label>
                 <p className="onboarding-footnote"><strong>Sandbox</strong> is recommended for first testing. It contains test data and is separate from production.</p>
                 {error && <p className="onboarding-error" role="alert">{error}</p>}
                 <button className="onboarding-primary" type="submit" disabled={busy || !bootstrap?.project.id}>{busy ? "Creating environment…" : "Create sandbox environment"}<ArrowRight size={17} /></button>
-              </form>}
+              </ValidatedForm>}
             </div>
           )}
 

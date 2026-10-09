@@ -1,16 +1,16 @@
 # Remaining Work — Developer Platform
 
-Verified against the repository. **598 tests, 0 failures, 10 skipped**, 16
-migrations, 14 controllers, 42 repositories, 4 scheduled jobs.
+Verified against the current repository sources. Database migration and full
+integration-suite execution still need confirmation in a PostgreSQL-enabled
+environment.
 
 ---
 
 ## 0. The blocking item
 
-**Nothing in this platform has ever executed against PostgreSQL.** All 16
-migrations are unrun. Every constraint, foreign key, trigger, check constraint,
-seed, and Hibernate mapping is unverified. The 10 skipped tests are all
-Testcontainers tests; there is exactly **one** integration test class.
+The current migration chain has not been verified against PostgreSQL in this
+work session. Constraints, foreign keys, triggers, seed rows, and Hibernate
+mappings still require a real database migration and integration run.
 
 This is not one task among many. Until a database runs, every other item below
 is unproven rather than unfinished, and the ordering matters: fixing schema or
@@ -22,58 +22,70 @@ available.** Everything else is cheaper to do afterwards.
 
 ---
 
-## 1. Systems that do not exist
+## 1. Systems with remaining gaps
 
-### Webhook delivery (largest single gap)
-Phase 11 built signing and retry policy. **The delivery system itself was never
-built.** No outbound HTTP client exists anywhere in the codebase — no
-`RestClient`, `WebClient`, `HttpClient`, or `URLConnection`.
-
-Missing: dispatcher, HTTP sender, durable queue, DLQ *producer* (the status value
-and index exist in V11 with nothing writing to them), replay tooling, manual
-retry API.
+### Webhook delivery
+The dispatcher, bounded HTTP sender, durable event source, append-only attempts,
+retry policy, dead-letter transition, replay API, and manual retry path exist.
+PostgreSQL and outbound-delivery behavior still need runtime verification.
 
 ### Event emission (Phase 11)
-Event types, subscriptions, and delivery records exist. **Nothing emits.** No
-event emitter, no schema validation against registered JSON schemas, no
-subscription matching, no dispatch worker.
+Project, API-key, webhook-creation, and production-access events are emitted
+transactionally and dispatched. Required-field validation uses registered
+schemas; full JSON Schema validation and emitters for remaining event families
+are still outstanding.
 
-### Production access — request detail fields (Phase 14)
-The largest gap against its own spec. **Every content field is absent**: no
-application details, organization details, intended API usage, requested scopes,
-requested limits, integration information, or security information. A request
-carries only a free-text `reason`.
-
-Also missing: **no provisioning**. Activation is a manual API call — nothing
-creates a production credential when it succeeds. And **no enforcement**: nothing
-checks `isActiveGrant` before serving, so ACTIVE does not unlock anything.
+### Production access (Phase 14)
+Request details, review transitions, active-grant enforcement for production API
+keys, and grant-expiry processing are wired. Activation remains an authorized
+explicit operation; automatic credential provisioning is still outstanding.
 
 ### Credential rotation + application suspension wiring (Phase 15)
 Rules and permissions exist; the actions are not implemented.
 
 ### Security event detection (Phase 15)
-All eight event types are defined and recordable. **No detector raises any of
-them.** No revoked-credential usage, token replay, scope abuse, or abnormal-usage
-detection. `AuthSession` was never updated to write `device_label` / `last_ip`.
+Current implementation: unfamiliar-device sign-ins, refresh-token replay,
+presentation of a non-active API key, API-key allowlist violations, and API-key
+scope abuse raise tenant-scoped signals. API-key detections are de-duplicated
+for 15 minutes per key and signal type. Repeated failures, suspicious webhook
+activity, and abnormal-usage detection remain.
+
+Two detectors currently raise signals: unfamiliar-device sign-ins and refresh
+token replay. The notification path now alerts the affected user and active
+security readers. API-key misuse, allowlist violations, scope abuse, repeated
+failures, suspicious webhook activity, and abnormal-usage detection still need
+detectors. Session device and IP fields are present and updated. The security
+center now exposes tenant-scoped open/history reads and an audited resolution
+operation with separate `security:read` and `security:control` permissions.
 
 ### Notification emission (Phase 16)
-All 18 events defined. **Nothing calls the service.** No controller, no OpenAPI,
-and **no retry worker** — `RETRY_SCHEDULED` is computed but nothing scans for it,
-so retries are currently one-attempt-and-give-up.
+All notification types, the controller, and scheduled retry worker are wired.
+API-key lifecycle, production-access transitions, recorded security signals,
+exhausted webhook deliveries, and per-environment usage thresholds raise
+notifications. Inbox pagination, read-state operations, preference payloads,
+and channel/category enums are documented in OpenAPI.
 
 ### Email transport (Phase 16)
-`UnconfiguredEmailTransport` reports every send as **failed**. This is deliberate
-and correct — a transport that reported success without sending would make a
-revoked-credential notification look delivered while no mail left the building.
-Wiring a real provider means replacing that one class.
+Notifications now use the configured SMTP relay. Delivery failures are recorded
+for retry without logging recipient addresses or message contents. Docker Compose
+includes a loopback-only Mailpit sink for development; deployments must provide
+their own relay credentials and enable STARTTLS before enabling public signup.
 
 ### SDK/CLI persistence + publishing (Phase 17)
+Current implementation: SDK and CLI release metadata is persisted and available
+from the public ecosystem registry. Operator publishing workflow and release
+pipeline checksum attestation remain outstanding.
+
 Domain and schema exist. **No repositories, no JPA entities, no controller, no
 publishing workflow.** Checksums are entered by hand rather than written by the
 release pipeline — the integrity guarantee currently depends on a human copying
 64 hex characters correctly.
 
 ### Platform administration controllers (Phase 19)
+Current implementation: health, billing, changelog, configuration, and incident
+routes are available through the separate operator plane with capability checks.
+Broader cross-tenant resource inspection and operator audit coverage remain.
+
 The separation is built and tested. **No controller** — none of the eleven
 operator capabilities is reachable.
 
@@ -83,18 +95,20 @@ operator capabilities is reachable.
 
 | Area | State |
 |---|---|
-| Rate limiting | Built and tested. **No filter calls it** — nothing is limited. No policy storage, no CRUD, no headers. |
-| Usage analytics | Ingestion + rollup wired. **No `ApiKeyAuthenticator` filter exists**, so `api_key_id` is always null and credential-usage analytics returns nothing. |
-| Security centre | Domain + persistence. No controller, no detectors. |
-| Audit catalog | `AuditAction` declared and tested, but **no call site uses it** — services still pass hand-written strings. No call site passes a real `projectId`. |
-| Notification preferences | Model exists. No endpoint to read or change them. |
+| Rate limiting | Filter and API-key environment enforcement are wired with fail-closed behavior. Policy administration UI and broader policy persistence remain incomplete. |
+| Usage analytics | Ingestion, API-key attribution, rollups, tenant-scoped query API, and frontend views exist. Retention and durable overflow handling remain. |
+| Data exports | Permission-scoped CSV downloads cover usage, request logs, webhook delivery attempts, audit events, and organization identity. Bulk usage/log/delivery exports are paged and capped at 5,000 rows. |
+| Security centre | Domain, persistence, session posture, and tenant-scoped event controller exist. Unfamiliar-device and refresh-token replay detectors notify users; broader detector coverage remains. |
+| Audit catalog | `AuditAction` remains largely unused; services still pass hand-written action strings. Verify project-scoped audit coverage per service. |
+| Notification preferences | Tenant-authenticated preference read/update endpoints and frontend controls exist. |
 
 ---
 
 ## 3. Unverified-by-construction
 
 - **Redis rate limiting** — Lua scripts compile but **have never executed**.
-- **All 18 migrations** — never applied.
+- **Current Flyway migration chain** — not applied and verified against a real
+  PostgreSQL database in this work session.
 - **Audit chain v1/v2/v3** — three canonical forms; v1 and v2 have never verified against a stored row.
 - **`@ConditionalOnProperty` store selection** — both stores exist; only the in-memory path is exercised in tests.
 - **Second filter chain (Phase 19)** — no test drives a developer session at `/internal/**` through the real chain.
@@ -103,10 +117,11 @@ operator capabilities is reachable.
 
 ## 4. Correctness gaps worth fixing before scale
 
-- **Rate limiter is fail-open globally.** A Redis outage silently removes
-  protection for every customer. Should be per-policy.
-- **Notifications drop on overflow.** Bounded buffer, counted but no DLQ.
-  Losing a "your key was revoked" is the worst outcome in that subsystem.
+- **Rate limiter fails closed globally.** A Redis outage rejects limited traffic
+  with 503 until the counter store is restored; confirm this availability tradeoff
+  against production recovery objectives.
+- **Usage events can overflow their bounded recorder.** The dropped count is
+  exposed for monitoring, but there is no durable overflow queue.
 - **Audit chain verification is never scheduled.** `verifyChain` exists but
   nothing calls it, so tampering is noticed only when someone looks.
 - **Operator actions are not audited.** Phase 18 needs an `actorUserId` an
@@ -128,10 +143,22 @@ throughput, and DLQ behaviour. All require infrastructure that has never run.
 
 ---
 
+## 5. Completed in this pass
+
+- **Feature flags and maintenance mode.** Deployment-configurable runtime controls expose a public status document, hide disabled dashboard navigation, return structured 404s for disabled feature APIs, and reject unsafe mutations during maintenance. See `docs/runtime-controls.md`.
+- **Frontend network resilience.** Browser offline state is visible throughout the portal, and transport failures now preserve the fact that no API response was received instead of surfacing browser-specific fetch errors.
+- **Form draft recovery.** The non-sensitive project-name field is recovered from browser storage after an interruption and cleared only when creation succeeds. Passwords, tokens, secrets, and MFA data are excluded.
+- **Near-real-time inbox state.** The portal refreshes unread notifications every 30 seconds while visible and immediately when the browser tab is revisited, without polling inactive tabs.
+- **Concurrent membership changes.** Organization and project memberships now have database version columns and state-changing membership paths obtain row locks before changing authorization. Optimistic-lock conflicts remain structured `409 CONCURRENT_UPDATE` responses.
+- **Status and incidents.** Public-safe platform status now includes component state, maintenance, and public incidents. The internal operator plane can create, update, resolve, and add public/private incident updates with capability checks and a required operator reason.
+- **Project restoration.** The existing server-side archive/restore lifecycle is now represented in the project directory with separate confirmation dialogs for both transitions.
+
 ## 6. Not started
 
-- **OpenAPI coverage.** Several controllers exist with no spec entry (usage,
-  security events, production-access review/activate/suspend/revoke/history).
+- **OpenAPI coverage.** Usage analytics, data exports, notification
+  inbox/preferences, security-event management, and the production-access
+  lifecycle now have route entries. The remaining API surface still needs a
+  controller-by-controller coverage audit.
 - **Retention policies.** `audit_events`, `api_request_events`, and
   `security_events` grow without bound. Recompute-based rollups make raw-event
   pruning unsafe until the coarsest window closes.

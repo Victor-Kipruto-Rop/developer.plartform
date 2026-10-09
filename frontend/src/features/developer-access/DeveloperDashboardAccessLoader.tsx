@@ -33,7 +33,7 @@ export function DeveloperDashboardAccessLoader({
         aria-busy={!error}
       >
         <div className={`developer-access-brand-mark${error ? " is-error" : ""}`} aria-hidden="true">
-          <img src="/pesaguard-icon.svg" alt="" />
+          <img src="/pesaguard-brand-mark.svg" alt="" />
           {!error && (
             <svg viewBox="0 0 176 190" focusable="false">
               <path

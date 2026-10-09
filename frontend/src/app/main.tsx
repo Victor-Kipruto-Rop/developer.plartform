@@ -6,8 +6,11 @@ import { NetworkStatusProvider } from "../context/NetworkStatusContext";
 import { AppErrorBoundary } from "../components/ui/AppErrorBoundary";
 import { NetworkStatusBanner } from "../components/ui/NetworkStatusBanner";
 import { ToastProvider } from "../components/ui/ToastProvider";
+import { installGlobalErrorHandlers } from "../lib/errors";
 import "../styles/globals.css";
 import "../styles/brand-typography.css";
+
+installGlobalErrorHandlers();
 
 const rootElement = document.getElementById("root");
 

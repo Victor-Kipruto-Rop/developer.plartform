@@ -1,3 +1,5 @@
+import { ValidatedForm } from "../../components/forms/ValidatedForm";
+import { getUserMessage } from "../../lib/errors";
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
 import {
   Activity,
@@ -224,7 +226,7 @@ export function LoadTestingPage() {
       })
       .catch((cause: unknown) => {
         if (!controller.signal.aborted) {
-          setError(cause instanceof Error ? cause.message : "Load tests could not be loaded.");
+          setError(getUserMessage(cause, "Load tests could not be loaded."));
           setTests([]);
           setSelectedId("");
         }
@@ -272,7 +274,7 @@ export function LoadTestingPage() {
       })
       .catch((cause: unknown) => {
         if (!controller.signal.aborted) {
-          setError(cause instanceof Error ? cause.message : "Load test details could not be loaded.");
+          setError(getUserMessage(cause, "Load test details could not be loaded."));
           setRuns([]);
         }
       });
@@ -308,7 +310,7 @@ export function LoadTestingPage() {
         if (metricPayload) setMetrics(mapMetrics(metricPayload));
         if (resultPayload) setResults(mapMetrics(resultPayload));
       } catch (cause) {
-        if (!disposed) setError(cause instanceof Error ? cause.message : "Run details could not be loaded.");
+        if (!disposed) setError(getUserMessage(cause, "Run details could not be loaded."));
       } finally {
         inFlight = false;
       }
@@ -375,7 +377,7 @@ export function LoadTestingPage() {
       if (result?.id) setSelectedId(result.id);
       reload();
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Load test configuration could not be saved.");
+      setError(getUserMessage(cause, "Load test configuration could not be saved."));
     } finally {
       setBusy("");
     }
@@ -412,7 +414,7 @@ export function LoadTestingPage() {
       setMessage("Run start request accepted by the API.");
       reload();
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "The run could not be started.");
+      setError(getUserMessage(cause, "The run could not be started."));
     } finally {
       setBusy("");
     }
@@ -445,7 +447,7 @@ export function LoadTestingPage() {
         if (created?.id) setSelectedId(created.id);
         reload();
       } catch (cause) {
-        setError(cause instanceof Error ? cause.message : "The configuration could not be cloned.");
+        setError(getUserMessage(cause, "The configuration could not be cloned."));
       } finally {
         setBusy("");
       }
@@ -465,7 +467,7 @@ export function LoadTestingPage() {
       setMessage(`${label} request accepted by the API.`);
       reload();
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : `The run could not be ${action}ed.`);
+      setError(getUserMessage(cause, `The run could not be ${action}ed.`));
     } finally {
       setBusy("");
     }
@@ -522,7 +524,7 @@ export function LoadTestingPage() {
               <div><h2 id="load-test-config-title">{selectedTest ? "Edit configuration" : "New load test"}</h2><p>Configuration is sent to the load-test API; no requests are generated until a run is explicitly started.</p></div>
               <button className="icon-button" type="button" onClick={() => setEditing(false)} aria-label="Close configuration editor"><X size={17} /></button>
             </div>
-            <form className="workflow-form load-test-form" onSubmit={(event) => void saveTest(event)}>
+            <ValidatedForm className="workflow-form load-test-form" onSubmit={(event) => void saveTest(event)}>
               <label>Name<input required maxLength={120} value={draft.name} onChange={(event) => setDraft({ ...draft, name: event.target.value })} /></label>
               <label>Description<input maxLength={500} value={draft.description} onChange={(event) => setDraft({ ...draft, description: event.target.value })} /></label>
               <label className="load-test-target-field">Supported API route<input required value={draft.targetUrl} onChange={(event) => setDraft({ ...draft, targetUrl: event.target.value })} aria-describedby="load-test-route-hint" autoComplete="off" /><small id="load-test-route-hint">Relative path only, e.g. /api/v1/accounts. Full URLs and side-effecting routes are not allowed.</small></label>
@@ -546,7 +548,7 @@ export function LoadTestingPage() {
                 <button className="button button--secondary" type="button" onClick={() => setEditing(false)}>Discard</button>
                 <button className="button button--primary" type="submit" disabled={busy === "save"}>{busy === "save" ? "Saving…" : selectedTest ? "Save changes" : "Create configuration"}</button>
               </div>
-            </form>
+            </ValidatedForm>
           </section>}
 
           {selectedTest && !editing ? <>

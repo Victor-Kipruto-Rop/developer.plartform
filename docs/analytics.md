@@ -22,6 +22,7 @@ every schema-level claim below is unverified.
 | Attribution | `analytics/infrastructure/RequestAttribution.java` | Complete, unverified |
 | Controller | `analytics/api/UsageController.java` | Complete, unverified |
 | Schema | `V12__api_usage_analytics.sql` | Written, **not yet executed** |
+| Request search and organization-scoped request detail | `analytics/application/RequestObservabilityService.java` | Implemented; PostgreSQL validation pending |
 
 ## How a request becomes a number
 
@@ -39,6 +40,20 @@ request
   -- GET /api/v1/usage -->
   -> UsageQueryService -> UsageController
 ```
+
+`GET /api/v1/usage/requests` exposes a bounded, paginated view of persisted
+request metadata (default seven-day range, maximum 31 days and 100 rows per
+page). Optional filters include project, environment, status, method and exact
+request ID. `GET /api/v1/usage/requests/{requestId}` looks up one request inside
+the authenticated organization. Both endpoints require `usage:read`.
+
+An API key with `usage:read` may call `GET /api/v1/key-data/usage`. Its project
+and environment filters are taken from the key itself, not the query string, so
+this read-only data route cannot be widened by changing request parameters.
+
+These are request records, not distributed spans. The response omits user IDs,
+credential IDs, headers, request bodies and response bodies; it includes only
+fields that `api_request_events` actually records.
 
 ## Request tracking
 

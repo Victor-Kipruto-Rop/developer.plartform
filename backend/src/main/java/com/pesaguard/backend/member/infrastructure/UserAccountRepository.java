@@ -24,6 +24,8 @@ public interface UserAccountRepository extends JpaRepository<UserAccount, UUID> 
 
     boolean existsByUsernameIgnoreCaseAndIdNot(String username, UUID id);
 
+    boolean existsByPhoneNumber(String phoneNumber);
+
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select account from UserAccount account where account.email = :email")
     Optional<UserAccount> findByEmailForUpdate(@Param("email") String email);

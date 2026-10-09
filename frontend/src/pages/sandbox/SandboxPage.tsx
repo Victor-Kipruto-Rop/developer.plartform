@@ -1,3 +1,4 @@
+import { getUserMessage } from "../../lib/errors";
 import { useEffect, useState } from "react";
 import {
   Activity,
@@ -140,7 +141,7 @@ export function SandboxPage() {
       setProjectId((current) => nextProjects.some((project) => project.id === current) ? current : firstProject);
       setError("");
     } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : "Could not load sandbox resources.");
+      setError(getUserMessage(requestError, "Could not load sandbox resources."));
     } finally {
       setLoading(false);
     }
@@ -155,7 +156,7 @@ export function SandboxPage() {
       const payload = await apiData<Execution[]>(`/api/v1/sandboxes/${encodeURIComponent(sandboxId)}/executions?limit=100`);
       setExecutions(payload);
     } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : "Could not load sandbox execution history.");
+      setError(getUserMessage(requestError, "Could not load sandbox execution history."));
     }
   }
 
@@ -192,7 +193,7 @@ export function SandboxPage() {
       setSelectedSandboxId(active.id);
       setNotice(`Sandbox “${active.name}” is ${active.status.toLowerCase()} and pinned to a SANDBOX environment.`);
     } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : "Could not create the sandbox.");
+      setError(getUserMessage(requestError, "Could not create the sandbox."));
     } finally {
       setSaving(false);
     }
@@ -214,7 +215,7 @@ export function SandboxPage() {
         : `Sandbox ${action} request completed. Current state: ${nextSandbox.status}.`);
       if (action === "reset") await loadExecutions(nextSandbox.id);
     } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : `Sandbox ${action} failed.`);
+      setError(getUserMessage(requestError, `Sandbox ${action} failed.`));
     } finally {
       setSaving(false);
     }
@@ -256,7 +257,7 @@ export function SandboxPage() {
       setNotice(`${scenario.label} executed in the isolated sandbox. Recorded HTTP status ${execution.statusCode ?? "—"}; execution outcome ${execution.outcome}.`);
       setActiveTab("Execution history");
     } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : "Scenario execution failed.");
+      setError(getUserMessage(requestError, "Scenario execution failed."));
     } finally {
       setRunning(false);
     }

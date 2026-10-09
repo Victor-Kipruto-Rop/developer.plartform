@@ -1,3 +1,4 @@
+import { getUserMessage } from "../../lib/errors";
 import { useEffect, useMemo, useState } from "react";
 import { RefreshCw, ShieldAlert } from "lucide-react";
 import { PageHeader } from "../../components/ui/PageHeader";
@@ -28,7 +29,7 @@ export function SecurityEventsPage() {
       const page = await apiData<AuditPage>("/api/v1/audit-events?page=0&size=100");
       setEvents(page.items);
     } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : "Could not load security-related audit events.");
+      setError(getUserMessage(requestError, "Could not load security-related audit events."));
     } finally {
       setLoading(false);
     }

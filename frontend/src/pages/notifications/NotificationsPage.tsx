@@ -1,3 +1,4 @@
+import { getUserMessage } from "../../lib/errors";
 import { useEffect, useMemo, useState } from "react";
 import { Bell, Check, CheckCheck, Filter, Settings2, X } from "lucide-react";
 import { PageHeader } from "../../components/ui/PageHeader";
@@ -68,7 +69,7 @@ export function NotificationsPage() {
       setUnreadTotal(result.unreadCount);
       setTotalItems(result.totalItems);
     } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : "Could not load notifications.");
+      setError(getUserMessage(requestError, "Could not load notifications."));
     } finally {
       setLoading(false);
     }
@@ -112,7 +113,7 @@ export function NotificationsPage() {
       setSelectedNotification((current) => current?.id === updated.id ? null : current);
       window.dispatchEvent(new Event("pesaguard:notifications-updated"));
     } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : "Could not mark the notification read.");
+      setError(getUserMessage(requestError, "Could not mark the notification read."));
     } finally {
       setBusy(false);
     }
@@ -130,7 +131,7 @@ export function NotificationsPage() {
       setSelectedNotification(null);
       window.dispatchEvent(new Event("pesaguard:notifications-updated"));
     } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : "Could not mark notifications read.");
+      setError(getUserMessage(requestError, "Could not mark notifications read."));
     } finally {
       setBusy(false);
     }

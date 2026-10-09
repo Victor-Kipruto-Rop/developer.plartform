@@ -102,6 +102,9 @@ PROVISIONING --activate--> ACTIVE --suspend--> SUSPENDED --resume--> ACTIVE
 - `SandboxExecutionService` — the single execution entry point
 - `SandboxLimitsService` — quota management
 - `SandboxController` — lifecycle, execution history, limits
+- `GET /api/v1/sandbox/transactions` accepts a valid `transactions:read` API key
+  bound to an active sandbox environment. It returns persisted transactions only;
+  when the backend has no transaction records, it returns an empty collection.
 - Repositories for sandboxes, guards, limits, executions and history
 - Eight `sandbox:*` RBAC permissions, held by OWNER, ADMIN and DEVELOPER
 - `V9` and `V10` migrations, with append-only triggers on execution and history
@@ -133,6 +136,9 @@ outcome from `FAILED` for exactly this reason.
   exercise (payments, transactions, reconciliation, fraud) do not exist in this
   codebase — phases 1-9 built the platform, not those APIs. Registering handlers
   is the next integration point.
+- The first-request transactions route is intentionally a fixed read-only
+  verification response, not a general transaction API and not a payment
+  simulator. It cannot accept a target URL or initiate a financial operation.
 - **Reset does not yet clear execution history.** `recordReset` increments a
   counter; the deletion of prior executions is not implemented.
 - **The expiry sweep is not scheduled.** `expireLapsed` exists but nothing calls

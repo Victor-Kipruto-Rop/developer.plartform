@@ -1,3 +1,5 @@
+import { ValidatedForm } from "../../components/forms/ValidatedForm";
+import { getUserMessage } from "../../lib/errors";
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { RotateCw, Settings2 } from "lucide-react";
 import { PageHeader } from "../../components/ui/PageHeader";
@@ -39,7 +41,7 @@ const limitFields: { key: LimitKey; label: string; min: number; max: number; uni
 ];
 
 function errorMessage(error: unknown) {
-  return error instanceof Error ? error.message : "The backend request failed.";
+  return getUserMessage(error, "The backend request failed.");
 }
 
 export function SandboxSettingsPage() {
@@ -182,7 +184,7 @@ export function SandboxSettingsPage() {
               {loadingLimits
                 ? <p className="security-empty-state">Loading backend-configured sandbox limits…</p>
                 : limits
-                  ? <form className="settings-groups" onSubmit={(event) => void saveLimits(event)}>
+                  ? <ValidatedForm className="settings-groups" onSubmit={(event) => void saveLimits(event)}>
                     {limitFields.map((field) => (
                       <label className="settings-field" key={field.key}>
                         <span>{field.label} <small>({field.unit})</small></span>
@@ -204,7 +206,7 @@ export function SandboxSettingsPage() {
                     <button className="button button--primary" type="submit" disabled={saving || loadingLimits}>
                       {saving ? "Saving…" : "Save sandbox limits"}
                     </button>
-                  </form>
+                  </ValidatedForm>
                   : <p className="security-empty-state">{error ? "Could not load limits for this sandbox." : "No limit data returned for this sandbox."}</p>}
             </section>
           </>}

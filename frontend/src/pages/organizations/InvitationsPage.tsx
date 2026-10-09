@@ -1,3 +1,5 @@
+import { ValidatedForm } from "../../components/forms/ValidatedForm";
+import { AppError, getUserMessage } from "../../lib/errors";
 import { useEffect, useState, type FormEvent } from "react";
 import { Mail, Plus, RefreshCw, UserPlus, UserX } from "lucide-react";
 import { PageHeader } from "../../components/ui/PageHeader";
@@ -51,7 +53,7 @@ export function InvitationsPage() {
         setInvitations(items);
       })
       .catch((requestError: unknown) => {
-        if (!controller.signal.aborted) setError(requestError instanceof Error ? requestError.message : "Could not load invitations.");
+        if (!controller.signal.aborted) setError(getUserMessage(requestError, "Could not load invitations."));
       })
       .finally(() => { if (!controller.signal.aborted) setLoading(false); });
     return () => controller.abort();
@@ -63,7 +65,7 @@ export function InvitationsPage() {
     setError("");
     setMessage("");
     try {
-      if (!invitationPath) throw new Error("Select an organization before inviting a member.");
+      if (!invitationPath) throw new AppError("VALIDATION_ERROR", "Select an organization before inviting a member.");
       const created = await apiData<CreatedInvitation>(invitationPath, {
         method: "POST",
         headers: { "Idempotency-Key": createUuid() },
@@ -79,7 +81,7 @@ export function InvitationsPage() {
       setEmail("");
       setRefreshKey((key) => key + 1);
     } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : "The invitation could not be created.");
+      setError(getUserMessage(requestError, "The invitation could not be created."));
     } finally {
       setSaving(false);
     }
@@ -91,12 +93,12 @@ export function InvitationsPage() {
     setError("");
     setMessage("");
     try {
-      if (!invitationPath) throw new Error("Select an organization before cancelling an invitation.");
+      if (!invitationPath) throw new AppError("VALIDATION_ERROR", "Select an organization before cancelling an invitation.");
       await apiData<void>(`${invitationPath}/${encodeURIComponent(invitation.id)}/cancel`, { method: "POST" });
       setMessage(`Invitation for ${invitation.email} was cancelled.`);
       setRefreshKey((key) => key + 1);
     } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : "The invitation could not be revoked.");
+      setError(getUserMessage(requestError, "The invitation could not be revoked."));
     } finally {
       setSaving(false);
     }
@@ -107,13 +109,13 @@ export function InvitationsPage() {
     setError("");
     setMessage("");
     try {
-      if (!invitationPath) throw new Error("Select an organization before resending an invitation.");
+      if (!invitationPath) throw new AppError("VALIDATION_ERROR", "Select an organization before resending an invitation.");
       const created = await apiData<CreatedInvitation>(`${invitationPath}/${encodeURIComponent(invitation.id)}/resend`, { method: "POST" });
       if (!created?.id || !created.email) throw new Error("The invitations API did not confirm email delivery.");
       setMessage(`A replacement invitation email was queued for ${created.email}. The previous link is invalid.`);
       setRefreshKey((key) => key + 1);
     } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : "The invitation could not be resent.");
+      setError(getUserMessage(requestError, "The invitation could not be resent."));
     } finally {
       setSaving(false);
     }
@@ -138,11 +140,11 @@ export function InvitationsPage() {
           </div>
           <span className="table-tag">ADMIN ACTION</span>
         </div>
-        <form className="workflow-form" onSubmit={createInvitation}>
+        <ValidatedForm className="workflow-form" onSubmit={createInvitation}>
           <label>Email address<input type="email" required maxLength={320} value={email} onChange={(event) => setEmail(event.target.value)} placeholder="developer@example.com" disabled={!isAuthenticated || saving} /></label>
           <label>Organization role<select value={role} onChange={(event) => setRole(event.target.value)} disabled={!isAuthenticated || saving}><option value="ADMIN">Admin</option><option value="DEVELOPER">Developer</option><option value="VIEWER">Viewer</option></select></label>
           <div className="workflow-form-actions"><button className="button button--primary" type="submit" disabled={!isAuthenticated || saving}><Plus size={14} />{saving ? "Working…" : "Send invitation"}</button></div>
-        </form>
+        </ValidatedForm>
         <p className="workflow-hint">A single-use invitation link will be sent directly to the invited email address. The private link is never shown in this dashboard.</p>
       </section>
       <section className="panel table-panel">

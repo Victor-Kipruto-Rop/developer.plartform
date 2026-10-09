@@ -81,7 +81,7 @@ const resources = [
 function Brand() {
   return (
     <a href="/" className="public-home-brand" aria-label="PesaGuard home">
-      <img src="/pesaguard-icon.svg" alt="" aria-hidden="true" />
+      <img src="/pesaguard-brand-mark.svg" alt="" aria-hidden="true" />
       <span className="public-home-brand-wordmark"><span>Pesa</span><span>Guard</span></span>
     </a>
   );

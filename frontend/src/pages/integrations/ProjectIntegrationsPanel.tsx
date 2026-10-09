@@ -1,3 +1,4 @@
+import { getUserMessage } from "../../lib/errors";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import {
   Activity,
@@ -146,7 +147,7 @@ export function ProjectIntegrationsPanel({ onNavigate }: { onNavigate: (page: Pa
       })
       .catch((cause: unknown) => {
         if (!controller.signal.aborted) {
-          setError(cause instanceof Error ? cause.message : "Could not load project integrations.");
+          setError(getUserMessage(cause, "Could not load project integrations."));
         }
       })
       .finally(() => {
@@ -190,7 +191,7 @@ export function ProjectIntegrationsPanel({ onNavigate }: { onNavigate: (page: Pa
       if (history[integration.id]) await loadHistory(integration.id);
       if (events[integration.id]) await loadEvents(integration.id);
     } catch (cause: unknown) {
-      setError(cause instanceof Error ? cause.message : "The connection test could not be completed.");
+      setError(getUserMessage(cause, "The connection test could not be completed."));
       try {
         await refreshIntegrations();
       } catch {
@@ -211,7 +212,7 @@ export function ProjectIntegrationsPanel({ onNavigate }: { onNavigate: (page: Pa
       );
       await refreshIntegrations();
     } catch (cause: unknown) {
-      setError(cause instanceof Error ? cause.message : "The integration setting could not be updated.");
+      setError(getUserMessage(cause, "The integration setting could not be updated."));
     } finally {
       setBusyId("");
     }
@@ -225,7 +226,7 @@ export function ProjectIntegrationsPanel({ onNavigate }: { onNavigate: (page: Pa
       );
       setHistory((current) => ({ ...current, [integrationId]: runs }));
     } catch (cause: unknown) {
-      setHistoryError(cause instanceof Error ? cause.message : "Connection history could not be loaded.");
+      setHistoryError(getUserMessage(cause, "Connection history could not be loaded."));
     }
   }
 
@@ -237,7 +238,7 @@ export function ProjectIntegrationsPanel({ onNavigate }: { onNavigate: (page: Pa
       );
       setEvents((current) => ({ ...current, [integrationId]: items }));
     } catch (cause: unknown) {
-      setHistoryError(cause instanceof Error ? cause.message : "Integration events could not be loaded.");
+      setHistoryError(getUserMessage(cause, "Integration events could not be loaded."));
     }
   }
 
@@ -311,8 +312,8 @@ export function ProjectIntegrationsPanel({ onNavigate }: { onNavigate: (page: Pa
         <div className={`integration-test-result ${result.status === "SUCCESS" ? "integration-test-result--success" : "integration-test-result--failure"}`} role="status">
           {result.status === "SUCCESS" ? <CheckCircle2 size={18} /> : <AlertTriangle size={18} />}
           <div>
-            <strong>{result.message}</strong>
-            <span>{result.latencyMs} ms · Request {result.requestId}</span>
+            <strong>{result.status === "SUCCESS" ? "Connection test succeeded." : "Connection test failed. Review the integration settings and try again."}</strong>
+            <span>{result.latencyMs} ms</span>
           </div>
         </div>
       )}
@@ -416,7 +417,7 @@ export function ProjectIntegrationsPanel({ onNavigate }: { onNavigate: (page: Pa
                   <span className={`integration-state ${statusClass(run.status === "SUCCESS" ? "CONNECTED" : "FAILED")}`}>{run.status.toLowerCase()}</span>
                   <span>{formatDate(run.startedAt)}</span>
                   <span>{run.latencyMs === null ? "—" : `${run.latencyMs} ms`}</span>
-                  <span>{run.failureCategory ?? run.message}</span>
+                  <span>{run.status === "SUCCESS" ? "Connection test succeeded." : "Connection test failed."}</span>
                 </div>
               ))}
               <h4>Integration events</h4>
@@ -429,7 +430,7 @@ export function ProjectIntegrationsPanel({ onNavigate }: { onNavigate: (page: Pa
                   </span>
                   <span>{formatDate(event.createdAt)}</span>
                   <span className="integration-request-id">{event.requestId}</span>
-                  <span>{event.details}</span>
+                  <span>{event.eventType.endsWith("FAILED") ? "The connection test could not be completed." : "Integration settings were updated."}</span>
                 </div>
               ))}
             </div>

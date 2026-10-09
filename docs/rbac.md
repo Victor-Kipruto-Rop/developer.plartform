@@ -75,9 +75,9 @@ hold none.
 
 ## Not yet enforced
 
-- `webhook:*` and `usage:read` exist in the catalog but have no backing feature
-  yet, so they grant nothing enforceable. (`credential:rotate` is now enforced by
-  OAuth client-secret rotation.)
+- Portal `webhook:*`, `usage:read` and `audit:read` permissions are enforced by
+  their respective APIs. API credentials use separate scopes such as plural
+  `webhooks:read`; see [the scope registry](./scopes.md).
 - `EnvironmentAccessPolicy` rows exist but are not consulted at request time; they are
   stored and exposed only.
 - OAuth applications are scoped to an organization, not to a project and environment

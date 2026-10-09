@@ -101,10 +101,11 @@ public class OrganizationLifecycleService {
     public OrganizationView create(AuthenticatedUser principal, CreateOrganizationRequest request) {
         authorization.requireRole(principal, Set.of(OrganizationRole.OWNER, OrganizationRole.ADMIN));
         metadataValidator.validate(request.metadata());
-        String slug = uniqueSlug(request.name());
+        String name = OrganizationNamePolicy.validate(request.name());
+        String slug = uniqueSlug(name);
         Instant now = clock.instant();
-        Organization organization = Organization.create(request.name().trim(), slug, principal.userId(), now);
-        organization.update(request.name().trim(), request.type(), request.metadata());
+        Organization organization = Organization.create(name, slug, principal.userId(), now);
+        organization.update(name, request.type(), request.metadata());
         organizationRepository.saveAndFlush(organization);
         settingsRepository.saveAndFlush(OrganizationSecuritySettings.defaults(organization.getId(), now));
         OrganizationMembership owner = membershipRepository.saveAndFlush(
@@ -125,9 +126,10 @@ public class OrganizationLifecycleService {
     public OrganizationView update(AuthenticatedUser principal, UpdateOrganizationRequest request) {
         authorization.requireRole(principal, Set.of(OrganizationRole.OWNER, OrganizationRole.ADMIN));
         metadataValidator.validate(request.metadata());
+        String name = OrganizationNamePolicy.validate(request.name());
         Organization organization = findForUpdate(principal.organizationId());
         ensureNotDeleted(organization);
-        organization.update(request.name().trim(), request.type(), request.metadata());
+        organization.update(name, request.type(), request.metadata());
         organizationRepository.saveAndFlush(organization);
         auditService.append(principal.organizationId(), principal.userId(), "organization.updated", "organization",
                 organization.getId().toString(), RequestContext.currentRequestId(),
@@ -281,4 +283,3 @@ public class OrganizationLifecycleService {
                 organization.getUpdatedAt());
     }
 }
-

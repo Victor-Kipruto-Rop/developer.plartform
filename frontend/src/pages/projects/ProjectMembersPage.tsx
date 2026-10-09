@@ -1,3 +1,4 @@
+import { getUserMessage } from "../../lib/errors";
 import { useEffect, useState } from "react";
 import { Users } from "lucide-react";
 import { PageHeader } from "../../components/ui/PageHeader";
@@ -32,7 +33,7 @@ export function ProjectMembersPage() {
     void apiData<ProjectMember[]>(`/api/v1/projects/${encodeURIComponent(projectId)}/members`)
       .then((result) => { if (active) setMembers(result); })
       .catch((requestError: unknown) => {
-        if (active) setError(requestError instanceof Error ? requestError.message : "Could not load project members.");
+        if (active) setError(getUserMessage(requestError, "Could not load project members."));
       })
       .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };

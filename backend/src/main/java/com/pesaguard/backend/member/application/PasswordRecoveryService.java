@@ -27,17 +27,12 @@ import com.pesaguard.backend.security.sessions.SessionService;
 /**
  * Password reset and password change.
  *
- * <p>Two rules shape this service, both about not helping an attacker:
- *
- * <p><b>Requests never confirm that an account exists.</b> {@link #request} returns
- * normally whether or not the address is registered. An endpoint that answered
- * "no such user" would turn password reset into an account-enumeration oracle.
- *
- * <p><b>Completing a reset ends every session, everywhere.</b> Changing a
- * password because it may be compromised must not leave the attacker holding a
- * refresh token, in any organization the user belongs to. Refresh families and
- * access sessions are both revoked, which is why this cannot live in the
- * controller layer.
+ * <p>Password reset requests do not reveal whether an email has an account.
+ * Completing a reset ends every session, everywhere. Changing a password
+ * because it may be compromised must not leave the attacker holding a refresh
+ * token, in any organization the user belongs to. Refresh families and access
+ * sessions are both revoked, which is why this cannot live in the controller
+ * layer.
  */
 @Service
 public class PasswordRecoveryService {
@@ -84,29 +79,31 @@ public class PasswordRecoveryService {
     /**
      * Starts a reset if the address is registered.
      *
-     * <p>Returns null when there is nothing to send, which the caller must treat
-     * as success. Any outstanding token is revoked first so that requesting a
-     * second reset cannot leave the first one live and usable.
+     * <p>Returns null when there is nothing to send, which the caller treats
+     * like success to prevent account enumeration. Any outstanding token is
+     * revoked first so that requesting a second reset cannot leave the first one
+     * live and usable.
      */
     @Transactional
     public String request(String email) {
         Instant now = clock.instant();
-        Optional<UserAccount> account = accountRepository.findByEmail(
+        Optional<UserAccount> account = accountRepository.findByEmailForUpdate(
                 email.trim().toLowerCase(java.util.Locale.ROOT));
         if (account.isEmpty()) {
             return null;
         }
         UserAccount user = account.get();
-        // A pending deletion is not a recoverable account. Reported as "no reset
-        // sent" rather than as an error, to keep this endpoint from revealing
-        // account state to a caller probing addresses.
         if (!user.getStatus().canAuthenticate()) {
             return null;
         }
 
-        for (PasswordResetToken existing : tokenRepository.findOutstandingByUserId(user.getId())) {
+        var outstandingTokens = tokenRepository.findOutstandingByUserId(user.getId());
+        for (PasswordResetToken existing : outstandingTokens) {
             existing.revoke(now);
             tokenRepository.save(existing);
+        }
+        if (!outstandingTokens.isEmpty()) {
+            tokenRepository.flush();
         }
 
         String token = credentialCryptoService.randomToken(32);

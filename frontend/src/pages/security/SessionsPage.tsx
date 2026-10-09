@@ -1,3 +1,4 @@
+import { getUserMessage } from "../../lib/errors";
 import { useEffect, useState } from "react";
 import { MonitorSmartphone, RefreshCw } from "lucide-react";
 import { PageHeader } from "../../components/ui/PageHeader";
@@ -23,7 +24,7 @@ export function SessionsPage() {
     try {
       setSessions(await listSessions());
     } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : "Could not load authenticated sessions.");
+      setError(getUserMessage(requestError, "Could not load authenticated sessions."));
     } finally {
       setLoading(false);
     }
@@ -40,7 +41,7 @@ export function SessionsPage() {
       setSessions((current) => current.filter((item) => item.id !== session.id));
       setNotice(`Session ${session.id} was revoked.`);
     } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : "Could not revoke the session.");
+      setError(getUserMessage(requestError, "Could not revoke the session."));
     } finally {
       setRevokingId("");
     }
@@ -57,7 +58,7 @@ export function SessionsPage() {
         ? `${result.revokedCount} other session${result.revokedCount === 1 ? "" : "s"} revoked.`
         : "There were no other active sessions to revoke.");
     } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : "Could not revoke other sessions.");
+      setError(getUserMessage(requestError, "Could not revoke other sessions."));
     } finally {
       setRevokingOthers(false);
     }

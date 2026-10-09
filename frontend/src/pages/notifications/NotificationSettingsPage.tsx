@@ -1,3 +1,4 @@
+import { getUserMessage } from "../../lib/errors";
 import { useEffect, useState } from "react";
 import { Bell, Check, Mail, RotateCcw } from "lucide-react";
 import { PageHeader } from "../../components/ui/PageHeader";
@@ -56,7 +57,7 @@ export function NotificationSettingsPage({ standalone = false }: { standalone?: 
       setSaved(next);
       setDraft(next);
     } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : "Could not load notification preferences.");
+      setError(getUserMessage(requestError, "Could not load notification preferences."));
     } finally {
       setLoading(false);
     }
@@ -104,7 +105,7 @@ export function NotificationSettingsPage({ standalone = false }: { standalone?: 
       setDraft(next);
       setNotice("Notification preferences saved.");
     } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : "Could not save notification preferences.");
+      setError(getUserMessage(requestError, "Could not save notification preferences."));
     } finally {
       setSaving(false);
     }
@@ -130,7 +131,7 @@ export function NotificationSettingsPage({ standalone = false }: { standalone?: 
       setDraft(next);
       setNotice("Notification preferences restored to defaults.");
     } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : "Could not restore notification preferences.");
+      setError(getUserMessage(requestError, "Could not restore notification preferences."));
     } finally {
       setSaving(false);
     }

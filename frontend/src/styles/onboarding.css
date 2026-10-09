@@ -20,7 +20,7 @@
 .onboarding-brand {
   display: inline-flex;
   align-items: center;
-  gap: 10px;
+  gap: 4px;
   color: var(--text);
   font-size: 18px;
   font-weight: 750;
@@ -29,6 +29,8 @@
 
 .onboarding-brand img {
   flex: 0 0 auto;
+  width: 34px;
+  height: 36px;
 }
 
 .onboarding-brand strong {
@@ -1128,7 +1130,7 @@
 }
 
 .onboarding-brand {
-  gap: 11px;
+  gap: 4px;
   font-size: 17px;
   letter-spacing: -.45px;
 }

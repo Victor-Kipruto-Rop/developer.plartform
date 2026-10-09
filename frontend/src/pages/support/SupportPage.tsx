@@ -1,3 +1,5 @@
+import { ValidatedForm } from "../../components/forms/ValidatedForm";
+import { getUserMessage } from "../../lib/errors";
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import {
   ArrowLeft,
@@ -284,7 +286,7 @@ export function SupportPage() {
         }
       })
       .catch((error: unknown) => {
-        if (active) setPlatformStatusError(error instanceof Error ? error.message : "Status service is unavailable.");
+        if (active) setPlatformStatusError(getUserMessage(error, "Status service is unavailable."));
       });
     return () => { active = false; };
   }, [tab]);
@@ -312,7 +314,7 @@ export function SupportPage() {
         if (active) setFocusedTicket(response);
       })
       .catch((error: unknown) => {
-        if (active) setTicketsError(error instanceof Error ? error.message : "The selected ticket could not be loaded.");
+        if (active) setTicketsError(getUserMessage(error, "The selected ticket could not be loaded."));
       });
     return () => { active = false; };
   }, [selectedTicketId, isAuthenticated]);
@@ -330,7 +332,7 @@ export function SupportPage() {
       .catch((error: unknown) => {
         if (active) {
           setHome(null);
-          setHomeError(error instanceof Error ? error.message : "The Support Center could not be reached.");
+          setHomeError(getUserMessage(error, "The Support Center could not be reached."));
         }
       });
     return () => { active = false; };
@@ -362,7 +364,7 @@ export function SupportPage() {
           setTicketTotalPages(response.totalPages);
         }
       } catch (error) {
-        if (active) setTicketsError(error instanceof Error ? error.message : "Support tickets could not be loaded.");
+        if (active) setTicketsError(getUserMessage(error, "Support tickets could not be loaded."));
       } finally {
         if (active) setTicketsLoading(false);
       }
@@ -394,7 +396,7 @@ export function SupportPage() {
           .catch((error: unknown) => {
             if (active) {
               setArticles([]);
-              setArticleError(error instanceof Error ? error.message : "The Help Center could not be reached.");
+              setArticleError(getUserMessage(error, "The Help Center could not be reached."));
             }
           });
       }
@@ -412,7 +414,7 @@ export function SupportPage() {
       .catch((error: unknown) => {
         if (active) {
           setSelectedArticle(null);
-          setArticleError(error instanceof Error ? error.message : "The requested article could not be loaded.");
+          setArticleError(getUserMessage(error, "The requested article could not be loaded."));
         }
       });
     return () => { active = false; };
@@ -447,7 +449,7 @@ export function SupportPage() {
       }).catch((error: unknown) => {
         if (active) {
           setSearchResults([]);
-          setSearchError(error instanceof Error ? error.message : "Support search is unavailable.");
+          setSearchError(getUserMessage(error, "Support search is unavailable."));
         }
       }).finally(() => {
         if (active) setSearchLoading(false);
@@ -567,7 +569,7 @@ export function SupportPage() {
       setRouteVersion((current) => current + 1);
     } catch (error) {
       console.warn("Unable to submit the support request.");
-      setFormMessage(error instanceof Error ? error.message : "We couldn't create your ticket. Your message has not been lost. Try again.");
+      setFormMessage(getUserMessage(error, "We couldn't create your ticket. Your message has not been lost. Try again."));
     } finally {
       setSubmitting(false);
     }
@@ -584,7 +586,7 @@ export function SupportPage() {
       });
       setFeedbackMessage("Thanks for helping us improve this article.");
     } catch (error) {
-      setFeedbackMessage(error instanceof Error ? error.message : "We couldn't save your feedback. Try again.");
+      setFeedbackMessage(getUserMessage(error, "We couldn't save your feedback. Try again."));
     } finally {
       setFeedbackSubmitting(false);
     }
@@ -606,7 +608,7 @@ export function SupportPage() {
       setTickets((current) => current.map((item) => item.id === ticket.id ? updated : item));
       if (focusedTicket?.id === ticket.id) setFocusedTicket(updated);
     } catch (error) {
-      setTicketActionError(error instanceof Error ? error.message : `The ticket could not be ${action === "close" ? "closed" : "reopened"}.`);
+      setTicketActionError(getUserMessage(error, `The ticket could not be ${action === "close" ? "closed" : "reopened"}.`));
     } finally {
       setTicketActionId("");
     }
@@ -806,7 +808,7 @@ export function SupportPage() {
           <div><span className="section-eyebrow">SUPPORT REQUEST</span><h2 id="support-ticket-form-title">Create a support ticket</h2><p>{isAuthenticated ? `Replies will be associated with ${user?.email ?? "your account"}.` : "Sign in to submit this request to support."}</p></div>
           <button className="icon-button" type="button" aria-label="Close support form" onClick={() => { setFormOpen(false); pushSupportPath("/support/tickets"); }}><X size={16} /></button>
         </div>
-        <form className="support-ticket-form" onSubmit={(event) => void submitTicket(event)}>
+        <ValidatedForm className="support-ticket-form" onSubmit={(event) => void submitTicket(event)}>
           <div className="support-ticket-form-grid">
             <label>Request type<select value={category} onChange={(event) => setCategory(event.target.value as TicketCategory)}>{categories.map((value) => <option value={value} key={value}>{categoryLabels[value]}</option>)}</select></label>
             <label>Priority<select value={priority} onChange={(event) => setPriority(event.target.value as TicketPriority)}>{Object.entries(priorityLabels).filter(([value]) => value !== "URGENT").map(([value, label]) => <option value={value} key={value}>{label}</option>)}</select><small>Urgent priority requires a support entitlement.</small></label>
@@ -825,7 +827,7 @@ export function SupportPage() {
           <p className="support-sensitive-reminder">Never include passwords, API keys, tokens, authorization headers, customer payment data, or webhook secrets.</p>
           {formMessage && <p className="support-form-message" role="alert">{formMessage}</p>}
           <div className="support-form-footer"><span>{isAuthenticated ? "Your request is scoped to your account." : "Sign in is required to submit this ticket."}</span><button className="button button--primary" type="submit" disabled={submitting || !isAuthenticated}>{submitting ? <><RefreshCw size={14} className="spin" />Submitting…</> : <><FilePlus2 size={14} />Submit ticket</>}</button></div>
-        </form>
+        </ValidatedForm>
       </section>}
     </>
   );

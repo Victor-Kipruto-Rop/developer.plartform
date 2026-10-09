@@ -1,10 +1,8 @@
 # Webhook Platform
 
-**This phase is partially built.** The signature scheme and the retry policy are
-complete and tested. The endpoint, subscription and delivery machinery is not yet
-written. This document describes what exists and is explicit about the gap,
-because a webhook platform that is half-implemented and presented as finished is
-worse than one that is obviously incomplete.
+Webhook endpoint management, event subscriptions, signed delivery, durable
+attempt history, retries and dead-letter replay are implemented in the developer
+platform. Delivery is at-least-once; receivers must deduplicate by event ID.
 
 ## What is built
 
@@ -15,11 +13,11 @@ worse than one that is obviously incomplete.
 | Replay protection (server side) | **Complete and tested** |
 | Signature versions | **Complete and tested** |
 | Retry policy with backoff + jitter | **Complete and tested** |
-| Endpoint management | Not built |
-| Subscriptions | Not built |
-| Secret storage and rotation | Not built |
-| Delivery worker | Not built |
-| DLQ | Not built |
+| Endpoint management and encrypted signing-secret storage | **Implemented** |
+| Project-bound event subscriptions and catalog | **Implemented** |
+| Scheduled HTTP delivery from committed outbox events | **Implemented** |
+| Append-only attempt history, retries, dead-letter and replay | **Implemented** |
+| Endpoint editing and secret rotation | Implemented |
 
 ## Signing
 
@@ -106,33 +104,68 @@ Retrying an identical request that was rejected wastes the attempt budget and
 hammers the receiver. Transport failures (DNS, timeout, connection) always retry:
 they say nothing about the receiver's intent.
 
-## What has NOT been built
+## Endpoint and delivery behavior
 
-- **Endpoint management.** No `WebhookEndpoint` entity, no create/update/delete/
-  activate/deactivate, no verification handshake. The `webhook:read` and
-  `webhook:write` RBAC permissions and the `webhooks:*` API scopes exist from
-  Phase 07, but nothing enforces them.
-- **Subscriptions.** No event-type filtering, environment binding, or payload
-  version selection.
-- **Secret storage and rotation.** The signature scheme takes a secret string;
-  nothing yet generates, stores (encrypted at rest) or rotates it. Rotation is
-  subtle: in-flight retries signed with the previous secret must still verify
-  during a grace window, or a rotation silently breaks deliveries already queued.
-- **Delivery.** No queue, worker, HTTP client, delivery tracking or status model.
-- **DLQ.** Nothing yet.
+- Endpoints are bound to both a project and an environment. List endpoints with
+  `GET /api/v1/webhooks/endpoints?projectId={projectId}&environmentId={environmentId}`;
+  create one with `POST /api/v1/webhooks/endpoints` and a JSON body containing
+  `projectId`, `environmentId`, `name` and `url`. The generated signing secret
+  is encrypted at rest, returned once, and never included in endpoint list or
+  status responses. Existing endpoints and subscriptions are assigned to Sandbox
+  by the environment-isolation migration; create a separate Production endpoint
+  and rotate its one-time secret before enabling live delivery.
+- Include the owning `environmentId` as a query parameter when changing endpoint
+  status, updating configuration, or rotating its secret. A mismatched environment
+  is rejected rather than operating on an endpoint in another environment.
+- Status changes use
+  `PATCH /api/v1/webhooks/endpoints/{endpointId}/status?environmentId={environmentId}`;
+- `PATCH /api/v1/webhooks/endpoints/{endpointId}?environmentId={environmentId}`
+  updates an endpoint's name and HTTPS destination after re-validating the target.
+  Deleted endpoints cannot be edited.
+- `POST /api/v1/webhooks/endpoints/{endpointId}/rotate-secret?environmentId={environmentId}` replaces the
+  encrypted signing secret and returns the new secret once. The previous secret
+  stops signing subsequent deliveries immediately; update the receiver before
+  relying on new deliveries.
+- Only HTTPS URLs resolving to public addresses are accepted. Validation runs at
+  endpoint creation and again immediately before each send. Redirects are not
+  followed, and connection and request timeouts are bounded.
+- `POST /api/v1/events/subscriptions` binds an active endpoint to a registered
+  event type in the same project environment. `projectId`, `environmentId` and
+  `endpointId` are required; an endpoint from a different environment is rejected.
+- Event, subscription and delivery reads, delivery replay, and webhook-delivery
+  CSV exports require both `projectId` and `environmentId`. The API key data
+  endpoints derive this scope from the key's bound environment.
+- The scheduled delivery worker consumes committed outbox records independently
+  of the optional Kafka publisher. Each retry is a new append-only
+  `event_deliveries` row. The signed
+  envelope carries event ID/type/version and the event payload.
+- HTTP 2xx succeeds. 408, 429, 5xx, and transport failures are retried using the
+  tested full-jitter retry policy. Other 4xx (including 410) fail permanently.
+  Exhausted attempts enter the dead-letter state and can be replayed explicitly.
+- Delivery responses are discarded; response bodies, request credentials and
+  signing secrets are not written to delivery history or application logs.
 
-## Security requirements not yet discharged
+Authorized organization members can edit an endpoint or rotate its secret from
+the Webhooks page. The one-time secret is shown in the page only after creation
+or rotation and cannot be retrieved later.
 
-- **SSRF.** A webhook endpoint URL is **user-supplied**, which makes it a
-  server-side request forgery vector. Phase 08 built `OutboundTargetGuard` for
-  exactly this (loopback, private ranges, cloud metadata, IPv4-mapped IPv6, DNS
-  rebinding via name resolution, 44 tests). **The delivery worker must call it on
-  every send, and at endpoint creation time.** This is the single most important
-  outstanding requirement in this phase and it is not yet wired.
-- **Secret handling.** Signing secrets must be encrypted at rest, never logged,
-  and returned exactly once at creation and rotation.
-- **Timeout.** Deliveries need a hard per-request timeout so one hanging receiver
-  cannot hold a worker thread indefinitely.
+### SSRF limitation
+
+`OutboundTargetGuard` rejects loopback, private, link-local, multicast and
+metadata destinations and validates every DNS answer. Webhook delivery pins the
+HTTP client's DNS resolver to those validated addresses for the request, while
+the original hostname remains in the URI for TLS SNI, certificate validation
+and the HTTP Host header. Redirects remain disabled, so a receiver cannot
+redirect the worker to an unchecked destination.
+
+### Remaining limitations
+
+- Signing-secret rotation with an overlap/grace period is not implemented.
+- Subscription payload version is pinned to the currently registered event
+  version; historical schema transformation is not implemented.
+- Endpoint ownership verification/challenge handshake is not implemented.
+- Delivery execution has not yet been verified against a production receiver or
+  a multi-instance PostgreSQL deployment.
 
 ## Verification status
 
@@ -145,11 +178,8 @@ they say nothing about the receiver's intent.
   that all three agree on the canonical vector *and* on verification outcomes for
   fresh, stale and forged headers. It skips only if an interpreter is absent, so a
   build that ran it is distinguishable from one that did not.
-- **NOT TESTED against PostgreSQL.** No migration for webhook tables has been
-  written, so there is nothing schema-level to verify yet.
-- **No live HTTP delivery has been performed.** The scheme is validated across
-  three implementations, but it has not been exercised over a real HTTP request
-  by a third-party receiver, and no external security review has been done.
+- The V34 webhook endpoint migration and scheduler still require integration
+  validation against PostgreSQL and a controlled HTTP receiver.
 - **Uncommitted** — the working directory is entirely untracked and CI has never
   run. In CI the cross-check will only run if Python or Node is installed on the
   runner; if neither is present the test skips, so the pinned canonical vector

@@ -1,3 +1,4 @@
+import { getUserMessage } from "../../lib/errors";
 import { useEffect, useState } from "react";
 import { Users } from "lucide-react";
 import { PageHeader } from "../../components/ui/PageHeader";
@@ -23,7 +24,7 @@ export function TeamSettingsPage() {
     void apiData<Member[]>("/api/v1/organization/members")
       .then((result) => { if (active) setMembers(result); })
       .catch((requestError: unknown) => {
-        if (active) setError(requestError instanceof Error ? requestError.message : "Could not load team settings.");
+        if (active) setError(getUserMessage(requestError, "Could not load team settings."));
       })
       .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };

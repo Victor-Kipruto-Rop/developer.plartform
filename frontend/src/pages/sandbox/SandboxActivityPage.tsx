@@ -1,3 +1,4 @@
+import { getUserMessage } from "../../lib/errors";
 import { useEffect, useState } from "react";
 import { Activity } from "lucide-react";
 import { PageHeader } from "../../components/ui/PageHeader";
@@ -44,7 +45,7 @@ export function SandboxActivityPage() {
         if (active) setRows(executions.flat().sort((left, right) => Date.parse(right.createdAt ?? "") - Date.parse(left.createdAt ?? "")));
       })
       .catch((requestError: unknown) => {
-        if (active) setError(requestError instanceof Error ? requestError.message : "Could not load sandbox execution history.");
+        if (active) setError(getUserMessage(requestError, "Could not load sandbox execution history."));
       })
       .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };

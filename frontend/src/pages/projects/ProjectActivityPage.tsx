@@ -1,3 +1,4 @@
+import { getUserMessage } from "../../lib/errors";
 import { useEffect, useState } from "react";
 import { Activity } from "lucide-react";
 import { PageHeader } from "../../components/ui/PageHeader";
@@ -33,7 +34,7 @@ export function ProjectActivityPage() {
         if (active) setEvents(result.items.filter((event) => event.resourceId === projectId));
       })
       .catch((requestError: unknown) => {
-        if (active) setError(requestError instanceof Error ? requestError.message : "Could not load project activity.");
+        if (active) setError(getUserMessage(requestError, "Could not load project activity."));
       })
       .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };

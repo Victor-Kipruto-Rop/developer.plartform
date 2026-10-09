@@ -1,3 +1,5 @@
+import { ValidatedForm } from "../../components/forms/ValidatedForm";
+import { getUserMessage } from "../../lib/errors";
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import {
   ArrowLeft,
@@ -282,7 +284,7 @@ export function SuggestionsPage() {
         }
       })
       .catch((caught: unknown) => {
-        if (active) setError(caught instanceof Error ? caught.message : "Feedback couldn't be loaded.");
+        if (active) setError(getUserMessage(caught, "Feedback couldn't be loaded."));
       })
       .finally(() => {
         if (active) setLoading(false);
@@ -315,7 +317,7 @@ export function SuggestionsPage() {
         }
       })
       .catch((caught: unknown) => {
-        if (active) setError(caught instanceof Error ? caught.message : "This feedback couldn't be loaded.");
+        if (active) setError(getUserMessage(caught, "This feedback couldn't be loaded."));
       })
       .finally(() => {
         if (active) setLoading(false);
@@ -376,7 +378,7 @@ export function SuggestionsPage() {
       setEnvironmentId(initialContext.environmentId);
       navigate("/suggestions");
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "We couldn't submit your feedback. Please try again.");
+      setError(getUserMessage(caught, "We couldn't submit your feedback. Please try again."));
     } finally {
       setSaving(false);
     }
@@ -403,7 +405,7 @@ export function SuggestionsPage() {
       setComment("");
       window.dispatchEvent(new Event("pesaguard:notifications-updated"));
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Your reply couldn't be sent.");
+      setError(getUserMessage(caught, "Your reply couldn't be sent."));
     } finally {
       setSaving(false);
     }
@@ -422,7 +424,7 @@ export function SuggestionsPage() {
       setSuccess("Feedback reopened. The team will be notified.");
       window.dispatchEvent(new Event("pesaguard:notifications-updated"));
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "This feedback couldn't be reopened.");
+      setError(getUserMessage(caught, "This feedback couldn't be reopened."));
     } finally {
       setSaving(false);
     }
@@ -465,7 +467,7 @@ export function SuggestionsPage() {
         <PageHeader eyebrow="HELP US IMPROVE" title="Submit feedback" description="Share an idea, report a problem, or tell us about your experience." />
         {error && <p className="suggestions-alert" role="alert"><CircleAlert size={16} />{error}</p>}
         {success && <p className="suggestions-success" role="status"><Check size={16} />{success}</p>}
-        <form className="suggestions-form" onSubmit={submitFeedback}>
+        <ValidatedForm className="suggestions-form" onSubmit={submitFeedback}>
           <label className="suggestions-field">
             <span>Type <b aria-hidden="true">*</b></span>
             <select className="field-control" value={type} onChange={(event) => setType(event.target.value as FeedbackType)} required>
@@ -516,7 +518,7 @@ export function SuggestionsPage() {
             <button className="button secondary" type="button" onClick={() => navigate("/suggestions")}>Cancel</button>
             <button className="button primary" type="submit" disabled={saving || !organization}><Send size={15} />{saving ? "Submitting…" : "Submit feedback"}</button>
           </div>
-        </form>
+        </ValidatedForm>
       </section>
     );
   }
@@ -543,10 +545,10 @@ export function SuggestionsPage() {
                       <p>{item.body}</p>
                     </article>
                   ))}
-                  <form className="suggestions-reply-form" onSubmit={sendComment}>
+                  <ValidatedForm className="suggestions-reply-form" onSubmit={sendComment}>
                     <label className="suggestions-field"><span className="sr-only">Write a reply</span><textarea className="field-control" value={comment} onChange={(event) => setComment(event.target.value)} maxLength={5000} rows={3} placeholder="Write a reply…" required /></label>
                     <button className="button primary" type="submit" disabled={saving || !comment.trim()}><Send size={15} /> Send reply</button>
-                  </form>
+                  </ValidatedForm>
                   {error && <p className="suggestions-alert" role="alert">{error}</p>}
                 </div>
               </article>

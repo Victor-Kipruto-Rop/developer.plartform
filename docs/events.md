@@ -1,8 +1,9 @@
 # Event Registry and Subscriptions
 
-**This phase is partially built.** The event registry, subscriptions and delivery
-tracking domain are complete, schema-backed and tested. The services,
-repositories, controllers and the dispatch worker are not yet written.
+The event registry, tenant-scoped catalog and stream APIs, subscription
+management, transactional project and credential event emission, and webhook
+dispatch are implemented. Webhook dispatch reads committed outbox rows directly;
+it does not wait for the optional Kafka publisher to mark an event published.
 
 ## What is built
 
@@ -13,9 +14,12 @@ repositories, controllers and the dispatch worker are not yet written.
 | Lifecycle and deprecation with a sunset gate | **Complete and tested** |
 | Subscriptions: filters, version, endpoint, status, environment | **Complete and tested** |
 | Delivery tracking per attempt | **Complete and tested** |
-| `V11` schema and seeded catalog | Written, never executed |
-| Services, repositories, controllers | Not built |
-| Dispatch worker | Not built |
+| `V11` schema and seeded catalog | Present; validate against PostgreSQL before deployment |
+| Tenant-scoped services, repositories and controllers | **Implemented** |
+| Scheduled dispatch from committed outbox records | **Implemented** |
+| Project and API-key lifecycle event emission | **Implemented** |
+| Webhook creation and production-access lifecycle event emission | **Implemented** |
+| Required-field validation against the registered schema | **Implemented** |
 
 ## Event names
 
@@ -78,13 +82,18 @@ sweep cannot keep an event alive past the date subscribers were promised.
 Every event carries a version, and every subscription **pins** one. If
 `developer.project.created` moves to v2 by gaining a field, a subscriber pinned to
 v1 keeps receiving the v1 shape. Without pinning, a routine additive change
-silently alters what integrators parse.
+silently alters what integrators parse. The current dispatcher only delivers the
+currently registered version; historical schema transformation is not yet
+implemented.
 
 ## Subscriptions
 
 A subscription names an event, pins its version, targets an endpoint, and is bound
-to a project and optionally an environment. A null environment means "every
-environment in the project".
+to exactly one project environment. The selected environment is required and must
+match the endpoint's environment; null no longer means "every environment".
+Event and delivery listings and replay operations require the same project and
+environment scope. Events without an environment identifier are not delivered to
+environment-bound subscriptions.
 
 Status is `ACTIVE`, `SUSPENDED` or `CANCELLED` (terminal).
 
@@ -108,7 +117,7 @@ Every attempt is a row. Attempts are never overwritten, so "how many times did
 this fail, and what did the endpoint say each time?" stays answerable.
 
 Tracked per attempt: event ID, subscription ID, delivery ID, attempt number,
-timestamp, status, response code and excerpt, latency, and the next attempt time.
+timestamp, status, response code, error code, latency, and the next attempt time.
 
 Status is `PENDING`, `IN_FLIGHT`, `DELIVERED`, `RETRY_SCHEDULED`, `FAILED`,
 `DEAD_LETTERED` or `SUPPRESSED`.
@@ -117,29 +126,29 @@ The table is **append-only** — the database rejects updates and deletes. The D
 evidence that something failed and a person must look; a delivery log that can be
 edited is not evidence.
 
-Response bodies are stored as truncated excerpts only, so the delivery table does
-not become a second copy of integration payloads that nobody thinks to apply
-retention to.
+Delivery response bodies are discarded and not persisted.
 
-## What has NOT been built
+## Limitations
 
-- **No services, repositories or controllers.** The domain is complete; nothing
-  persists or exposes it yet.
-- **No dispatch worker.** No code enumerates subscribers, matches filters or
-  attempts delivery.
-- **No payload validation against the registered schema.** Schemas are stored and
-  versioned but nothing validates a payload against them on emit.
-- **No event emission.** Nothing yet publishes an event when a project is created
-  or a key is revoked.
-- **No replay or manual retry API** for dead-lettered deliveries.
-- **No OpenAPI entries or RBAC permissions** for events.
+- Payloads are stored as valid JSON but are not validated against the registered
+  JSON Schema before commit or delivery.
+- Subscription versions are recorded, but historical payload transformation is
+  not implemented; only the current event version is sent.
+- Event delivery is at-least-once. Receivers must deduplicate by event ID.
+- Dispatchers coordinate across nodes with short-lived database claims. A process
+  crash after the receiver accepted the request but before the attempt is recorded
+  can still cause redelivery.
+- Dead-lettered attempts can be explicitly replayed; automatic retry uses the
+  configured tested full-jitter policy.
+- PostgreSQL migration and multi-instance dispatcher behavior still require
+  integration validation.
 
 ## Verification status
 
 - Domain behaviour is covered by tests, including the seeded-catalog guard.
-- **NOT TESTED against PostgreSQL.** `V11` has never executed. The check
-  constraints, foreign keys, the append-only trigger and the seed are all
-  **unverified**. Docker is unavailable in this environment.
+- **NOT TESTED against PostgreSQL.** The check constraints, foreign keys, the
+  append-only trigger and the seed are **unverified**. Docker is unavailable in
+  this environment.
 - **The migration version sequence skips V8.** There is no `V8__*`; Flyway tolerates
   this, but adding one later would be an out-of-order migration and would need
   `outOfOrder` handling or renumbering.

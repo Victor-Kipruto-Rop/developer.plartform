@@ -1,3 +1,5 @@
+import { ValidatedForm } from "../../components/forms/ValidatedForm";
+import { getUserMessage } from "../../lib/errors";
 import { useEffect, useState, type FormEvent } from "react";
 import { ArrowLeft, Check, CircleAlert, MessageCircle, RefreshCw, Search, Send, Shield, UserRound } from "lucide-react";
 import { apiData } from "../../lib/api";
@@ -92,7 +94,7 @@ export function AdminFeedbackPage({ onBack }: { onBack: () => void }) {
       }
       setData(result);
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "The administrator feedback list couldn't be loaded.");
+      setError(getUserMessage(caught, "The administrator feedback list couldn't be loaded."));
     } finally {
       setLoading(false);
     }
@@ -106,7 +108,7 @@ export function AdminFeedbackPage({ onBack }: { onBack: () => void }) {
       setSelected(result);
       setTeam(result.assignedTeam ?? "");
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Feedback details couldn't be loaded.");
+      setError(getUserMessage(caught, "Feedback details couldn't be loaded."));
     } finally {
       setLoading(false);
     }
@@ -146,7 +148,7 @@ export function AdminFeedbackPage({ onBack }: { onBack: () => void }) {
       setMessage(successMessage ?? "Feedback updated.");
       await loadList();
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "This administrator action couldn't be completed.");
+      setError(getUserMessage(caught, "This administrator action couldn't be completed."));
     } finally {
       setSaving(false);
     }
@@ -213,8 +215,8 @@ export function AdminFeedbackPage({ onBack }: { onBack: () => void }) {
         <div className="suggestions-admin-detail-grid">
           <div className="suggestions-admin-detail-main">
             <section className="suggestions-admin-section"><h2>Description</h2><p>{selected.description}</p></section>
-            <section className="suggestions-admin-section"><h2>Developer conversation</h2>{selected.comments.map((item, index) => <article className="suggestions-comment" key={`${item.createdAt}-${index}`}><div><strong>{item.authorName}</strong><time>{formattedDate(item.createdAt)}</time></div><p>{item.body}</p></article>)}<form className="suggestions-reply-form" onSubmit={(event) => void sendMessage(event, false)}><label className="suggestions-field"><span>Public reply</span><textarea className="field-control" rows={3} value={reply} onChange={(event) => setReply(event.target.value)} maxLength={5000} required /></label><button className="button primary" type="submit" disabled={saving || !reply.trim()}><Send size={14} /> Send reply</button></form></section>
-            <section className="suggestions-admin-section suggestions-internal-notes"><h2><Shield size={15} /> Internal notes <span>Admin only</span></h2>{selected.internalNotes.map((item, index) => <article className="suggestions-comment" key={`${item.createdAt}-${index}`}><div><strong>{item.authorName}</strong><time>{formattedDate(item.createdAt)}</time></div><p>{item.body}</p></article>)}<form className="suggestions-reply-form" onSubmit={(event) => void sendMessage(event, true)}><label className="suggestions-field"><span>Private note</span><textarea className="field-control" rows={3} value={internalNote} onChange={(event) => setInternalNote(event.target.value)} maxLength={5000} required /></label><button className="button secondary" type="submit" disabled={saving || !internalNote.trim()}><Shield size={14} /> Add internal note</button></form></section>
+            <section className="suggestions-admin-section"><h2>Developer conversation</h2>{selected.comments.map((item, index) => <article className="suggestions-comment" key={`${item.createdAt}-${index}`}><div><strong>{item.authorName}</strong><time>{formattedDate(item.createdAt)}</time></div><p>{item.body}</p></article>)}<ValidatedForm className="suggestions-reply-form" onSubmit={(event) => void sendMessage(event, false)}><label className="suggestions-field"><span>Public reply</span><textarea className="field-control" rows={3} value={reply} onChange={(event) => setReply(event.target.value)} maxLength={5000} required /></label><button className="button primary" type="submit" disabled={saving || !reply.trim()}><Send size={14} /> Send reply</button></ValidatedForm></section>
+            <section className="suggestions-admin-section suggestions-internal-notes"><h2><Shield size={15} /> Internal notes <span>Admin only</span></h2>{selected.internalNotes.map((item, index) => <article className="suggestions-comment" key={`${item.createdAt}-${index}`}><div><strong>{item.authorName}</strong><time>{formattedDate(item.createdAt)}</time></div><p>{item.body}</p></article>)}<ValidatedForm className="suggestions-reply-form" onSubmit={(event) => void sendMessage(event, true)}><label className="suggestions-field"><span>Private note</span><textarea className="field-control" rows={3} value={internalNote} onChange={(event) => setInternalNote(event.target.value)} maxLength={5000} required /></label><button className="button secondary" type="submit" disabled={saving || !internalNote.trim()}><Shield size={14} /> Add internal note</button></ValidatedForm></section>
             <section className="suggestions-admin-section"><h2>Technical context</h2><dl className="suggestions-admin-context">{[["Organization", selected.organizationName], ["Project", selected.projectName], ["Environment", selected.environmentName], ["Submitted by", selected.submitterName], ["Email", selected.submitterEmail], ["Route", selected.route], ["Browser", selected.browser], ["OS", selected.operatingSystem], ["Application", selected.applicationVersion], ["Frontend", selected.frontendVersion], ["Request ID", selected.requestId], ["Correlation ID", selected.correlationId]].filter(([, value]) => Boolean(value)).map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}</dl></section>
             <section className="suggestions-admin-section"><h2>Activity</h2><ol className="suggestions-admin-activity">{selected.activity.map((item, index) => <li key={`${item.createdAt}-${index}`}><span className="suggestions-status-dot" /><div><strong>{item.eventType.replaceAll("_", " ")}</strong><small>{item.actorName} · {formattedDate(item.createdAt)}</small></div></li>)}</ol></section>
           </div>
@@ -222,7 +224,7 @@ export function AdminFeedbackPage({ onBack }: { onBack: () => void }) {
             <h2>Manage feedback</h2>
             <label className="suggestions-field"><span>Status</span><select className="field-control" value={selected.status} onChange={(event) => void updateStatusAndPriority(event.target.value as FeedbackStatus, selected.priority)} disabled={saving}>{statuses.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</select></label>
             <label className="suggestions-field"><span>Priority</span><select className="field-control" value={selected.priority} onChange={(event) => void updateStatusAndPriority(selected.status, event.target.value as FeedbackPriority)} disabled={saving}>{priorities.map((item) => <option key={item} value={item}>{item}</option>)}</select></label>
-            <form className="suggestions-admin-assign" onSubmit={(event) => void assign(event)}><label className="suggestions-field"><span>Team</span><select className="field-control" value={team} onChange={(event) => setTeam(event.target.value)}><option value="">Select team</option>{teams.map((item) => <option key={item} value={item}>{item.replaceAll("_", " ")}</option>)}</select></label><label className="suggestions-field"><span>Administrator ID (optional)</span><input className="field-control" value={assigneeId} onChange={(event) => setAssigneeId(event.target.value)} /></label><button className="button secondary" type="submit" disabled={saving || !team}><UserRound size={14} /> Assign</button></form>
+            <ValidatedForm className="suggestions-admin-assign" onSubmit={(event) => void assign(event)}><label className="suggestions-field"><span>Team</span><select className="field-control" value={team} onChange={(event) => setTeam(event.target.value)}><option value="">Select team</option>{teams.map((item) => <option key={item} value={item}>{item.replaceAll("_", " ")}</option>)}</select></label><label className="suggestions-field"><span>Administrator ID (optional)</span><input className="field-control" value={assigneeId} onChange={(event) => setAssigneeId(event.target.value)} /></label><button className="button secondary" type="submit" disabled={saving || !team}><UserRound size={14} /> Assign</button></ValidatedForm>
             <div className="suggestions-admin-actions"><button className="button primary" type="button" onClick={() => void resolveOrClose("resolve")} disabled={saving || selected.status === "RESOLVED"}><Check size={14} /> Resolve</button><button className="button secondary" type="button" onClick={() => void resolveOrClose("close")} disabled={saving || selected.status === "CLOSED"}>Close</button></div>
           </aside>
         </div>

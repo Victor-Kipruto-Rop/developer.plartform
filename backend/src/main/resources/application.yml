@@ -258,6 +258,7 @@ pesaguard:
     manual-instructions: ${PESAGUARD_BILLING_MANUAL_INSTRUCTIONS:}
 
 server:
+  address: ${SERVER_ADDRESS:0.0.0.0}
   shutdown: graceful
   error:
     include-message: never

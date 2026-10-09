@@ -1,3 +1,4 @@
+import { getUserMessage } from "../../lib/errors";
 import { useCallback, useEffect, useState, type KeyboardEvent } from "react";
 import { Activity, AlertTriangle, ArrowRight, Check, CheckCircle2, Clipboard, Code2, ExternalLink, KeyRound, LoaderCircle, Rocket, Settings2, ShieldCheck, Webhook, XCircle } from "lucide-react";
 import { PageHeader } from "../../components/ui/PageHeader";
@@ -164,7 +165,7 @@ function handleGoLiveTabKeyDown(
 }
 
 function errorMessage(error: unknown) {
-  return error instanceof Error ? error.message : "The request failed. Try again.";
+  return getUserMessage(error, "The request failed. Try again.");
 }
 
 function dateLabel(value: string | null | undefined) {
@@ -385,10 +386,12 @@ export function GoLivePage({ onNavigate, activeSection, onNavigateSection }: GoL
         }
       }
       if (job.status === "FAILED") {
-        throw new Error(job.failureReason ?? "The backend could not complete this verification.");
+        setError("Readiness verification could not be completed. Review the checks and try again.");
+        return;
       }
       if (job.status !== "COMPLETED" || !job.result) {
-        throw new Error(`Verification is still processing. Job reference: ${job.id}`);
+        setNotice("Verification is still processing. Check the readiness page again shortly.");
+        return;
       }
       const result = job.result;
       setReadiness(result);
@@ -424,7 +427,7 @@ export function GoLivePage({ onNavigate, activeSection, onNavigateSection }: GoL
       if (result.status === "LIVE") {
         setNotice(`Production launch completed. Launch reference: ${result.id}`);
       } else {
-        const failure = `Production launch couldn't be completed. ${result.failureReason ?? "Required readiness checks did not pass."} Reference: ${result.id}`;
+        const failure = `Production launch couldn't be completed. Review the failed readiness checks and try again. Reference: ${result.id}`;
         await load();
         setError(failure);
         return;

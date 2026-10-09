@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import type { AuthChallenge, AuthOrganization, AuthSession, AuthStatus, AuthUser, LoginEmailMfaChallenge, RegistrationResponse } from "../types/auth";
-import { ApiError, onSessionRefreshed, onSignedOut } from "../lib/api";
+import { ApiError, onSessionRefreshed, onSignedOut, safeUserErrorMessage } from "../lib/api";
 import * as authApi from "../lib/authApi";
 import {
   clearSession,
@@ -26,10 +26,11 @@ interface AuthContextValue {
   login: (email: string, password: string, organizationId?: string) => Promise<void>;
   verifyLoginEmailMfa: (challengeId: string, code: string) => Promise<void>;
   completeRegistrationVerification: (email: string, code: string, password: string) => Promise<void>;
+  completeRegistrationVerificationByLink: (token: string) => Promise<void>;
   resendLoginEmailMfa: (challengeId: string) => Promise<LoginEmailMfaChallenge>;
   switchWorkspace: (workspaceId: string) => Promise<void>;
   acceptSession: (session: AuthSession) => void;
-  register: (email: string, password: string, displayName: string, organizationName?: string, organizationDescription?: string, termsAccepted?: boolean, username?: string, phoneNumber?: string) => Promise<RegistrationResponse>;
+  register: (email: string, password: string, displayName: string, organizationName: string, organizationDescription?: string, termsAccepted?: boolean, username?: string, phoneNumber?: string) => Promise<RegistrationResponse>;
   logout: () => Promise<void>;
   /** Re-reads identity from the API. Kept for a manual "retry" affordance. */
   reload: () => Promise<void>;
@@ -230,7 +231,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           throw caught;
         }
         setStatus("guest");
-        setError(caught instanceof ApiError ? caught.message : "Sign in failed. Please try again.");
+        setError(safeUserErrorMessage(caught, "Sign in failed. Please try again."));
         throw caught;
       }
     },
@@ -249,7 +250,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         adopt(stored);
       } catch (caught) {
         setStatus("email_mfa_required");
-        setError(caught instanceof ApiError ? caught.message : "Verification failed. Please try again.");
+        setError(safeUserErrorMessage(caught, "Verification failed. Please try again."));
         throw caught;
       }
     },
@@ -269,7 +270,27 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         adopt(stored);
       } catch (caught) {
         setStatus("guest");
-        setError(caught instanceof ApiError ? caught.message : "Verification failed. Please try again.");
+        setError(safeUserErrorMessage(caught, "Verification failed. Please try again."));
+        throw caught;
+      }
+    },
+    [adopt],
+  );
+
+  const completeRegistrationVerificationByLink = useCallback(
+    async (token: string) => {
+      setError(null);
+      setStatus("authenticating");
+      try {
+        const result = await authApi.completeRegistrationVerificationByLink(token);
+        const stored = persistSession(result);
+        publishSignedIn(stored);
+        setWelcomePending(true);
+        setChallenge(null);
+        adopt(stored);
+      } catch (caught) {
+        setStatus("guest");
+        setError(safeUserErrorMessage(caught, "Email verification could not be completed."));
         throw caught;
       }
     },
@@ -309,7 +330,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       email: string,
       password: string,
       displayName: string,
-      organizationName?: string,
+      organizationName: string,
       organizationDescription?: string,
       termsAccepted = true,
       username?: string,
@@ -322,7 +343,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           email,
           password,
           displayName,
-          ...(organizationName ? { organizationName } : {}),
+          organizationName: organizationName.trim(),
           ...(organizationDescription ? { organizationDescription } : {}),
           termsAccepted,
           ...(username !== undefined ? { username } : {}),
@@ -332,7 +353,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         return result;
       } catch (caught) {
         setStatus("guest");
-        setError(caught instanceof ApiError ? caught.message : "Registration failed. Please try again.");
+        setError(safeUserErrorMessage(caught, "Registration failed. Please try again."));
         throw caught;
       }
     },
@@ -391,6 +412,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       login,
       verifyLoginEmailMfa,
       completeRegistrationVerification,
+      completeRegistrationVerificationByLink,
       resendLoginEmailMfa,
       switchWorkspace,
       acceptSession,
@@ -401,7 +423,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       error,
     }),
     [session, status, error, challenge, permissions, permissionsLoaded, welcomePending, consumeWelcome,
-      login, verifyLoginEmailMfa, completeRegistrationVerification, resendLoginEmailMfa, switchWorkspace,
+      login, verifyLoginEmailMfa, completeRegistrationVerification, completeRegistrationVerificationByLink,
+      resendLoginEmailMfa, switchWorkspace,
       acceptSession, register, logout, reload],
   );
 

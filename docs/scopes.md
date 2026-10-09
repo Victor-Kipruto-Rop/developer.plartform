@@ -22,8 +22,8 @@ that API.
 
 ## The registry
 
-Seeded by `V7__api_scopes.sql`. The registry is owned by code: an operator may
-annotate a scope, but cannot invent one. An unknown scope is **rejected, not
+Seeded by `V7__api_scopes.sql` and extended by `V42__api_key_data_scopes.sql`.
+The registry is owned by code: an operator may annotate a scope, but cannot invent one. An unknown scope is **rejected, not
 created**, so a typo in a client integration fails loudly instead of quietly
 creating a scope that grants nothing and looks legitimate in a listing.
 
@@ -36,6 +36,9 @@ creating a scope that grants nothing and looks legitimate in a listing.
 | `reconciliation:read` | reconciliation | no |
 | `reconciliation:write` | reconciliation | **yes** |
 | `fraud:read` | fraud | no |
+| `usage:read` | usage | no |
+| `audit:read` | audit | no |
+| `events:read` | events | no |
 | `webhooks:read` | webhooks | no |
 | `webhooks:write` | webhooks | **yes** |
 | `developer:read` | developer | no |
@@ -46,6 +49,29 @@ never do.
 
 Categories are a presentation and review grouping, **not** a permission boundary.
 Holding `payments:read` grants nothing else in the payments category.
+
+Read-only API-key data routes are exposed under `/api/v1/key-data`. They
+authenticate the presented key directly and do not turn it into a user session:
+login, MFA, session, account, organization, membership, role, and credential
+administration routes remain session-only. Usage queries are pinned to the key's
+project and environment; audit, event, and endpoint resources are limited to the
+key's project, with subscriptions and delivery attempts further restricted to
+its environment.
+
+| Route | Required API-key scope |
+| --- | --- |
+| `GET /api/v1/key-data/usage` | `usage:read` |
+| `GET /api/v1/key-data/audit-events` | `audit:read` |
+| `GET /api/v1/key-data/events` | `events:read` |
+| `GET /api/v1/key-data/events/catalog` | `events:read` |
+| `GET /api/v1/key-data/events/subscriptions` | `events:read` |
+| `GET /api/v1/key-data/events/deliveries` | `events:read` |
+| `GET /api/v1/key-data/webhooks` | `webhooks:read` |
+
+These routes accept `Authorization: Bearer <api-key>`. They return 401 for an
+invalid, expired, suspended, revoked, IP-restricted, or resource-inactive key,
+and 403 when the key lacks the route's exact scope. Key use is recorded only
+after a successful data response.
 
 ### Matching
 

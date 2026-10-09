@@ -1,3 +1,4 @@
+import { getUserMessage } from "../../lib/errors";
 import { Download, LogOut, ShieldCheck, Sparkles, TimerReset, Trash2, UserCircle2 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useAuth } from "../../context/AuthContext";
@@ -489,7 +490,7 @@ export function AccountSettingsPage() {
       }
     }).catch((error: unknown) => {
       if (active) {
-        setProfileError(error instanceof Error ? error.message : "Could not load your username.");
+        setProfileError(getUserMessage(error, "Could not load your username."));
       }
     }).finally(() => {
       if (active) setUsernameLoading(false);
@@ -502,19 +503,19 @@ export function AccountSettingsPage() {
     }).catch((error: unknown) => {
       if (active) {
         setEmailStatus("unavailable");
-        setProfileError(error instanceof Error ? error.message : "Could not load email verification status.");
+        setProfileError(getUserMessage(error, "Could not load email verification status."));
       }
     });
     void loadMfaStatus().then((status) => {
       if (active) setMfaEnabled(status.enabled);
     }).catch((error: unknown) => {
-      if (active) setMfaError(error instanceof Error ? error.message : "Could not load MFA status.");
+      if (active) setMfaError(getUserMessage(error, "Could not load MFA status."));
     });
     setLifecycleLoading(true);
     void getAccountLifecycle().then((status) => {
       if (active) setAccountLifecycle(status);
     }).catch((error: unknown) => {
-      if (active) setLifecycleError(error instanceof Error ? error.message : "Could not load account lifecycle status.");
+      if (active) setLifecycleError(getUserMessage(error, "Could not load account lifecycle status."));
     }).finally(() => {
       if (active) setLifecycleLoading(false);
     });
@@ -572,7 +573,7 @@ export function AccountSettingsPage() {
       document.documentElement.setAttribute("dir", form.language === "ar" ? "rtl" : "ltr");
       setSaveState(t.saveSuccess);
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Unable to save profile changes.";
+      const message = getUserMessage(error, "Unable to save profile changes.");
       setProfileError(message);
       setSaveState(message);
     } finally {
@@ -604,7 +605,7 @@ export function AccountSettingsPage() {
       window.setTimeout(() => URL.revokeObjectURL(url), 0);
       setLifecycleNotice("Your account export has been downloaded.");
     } catch (error) {
-      setLifecycleError(error instanceof Error ? error.message : "The account export could not be created.");
+      setLifecycleError(getUserMessage(error, "The account export could not be created."));
     } finally {
       setLifecycleBusy(false);
       setStepUpPassword("");
@@ -624,7 +625,7 @@ export function AccountSettingsPage() {
       setAccountLifecycle(status);
       setLifecycleNotice("Deletion requested. You can cancel it before the scheduled completion date.");
     } catch (error) {
-      setLifecycleError(error instanceof Error ? error.message : "Account deletion could not be requested.");
+      setLifecycleError(getUserMessage(error, "Account deletion could not be requested."));
     } finally {
       setLifecycleBusy(false);
       setStepUpPassword("");
@@ -641,7 +642,7 @@ export function AccountSettingsPage() {
       setAccountLifecycle(status);
       setLifecycleNotice("The pending account deletion was cancelled.");
     } catch (error) {
-      setLifecycleError(error instanceof Error ? error.message : "The account deletion could not be cancelled.");
+      setLifecycleError(getUserMessage(error, "The account deletion could not be cancelled."));
     } finally {
       setLifecycleBusy(false);
       setStepUpPassword("");
@@ -660,7 +661,7 @@ export function AccountSettingsPage() {
       await deactivateAccount(stepUpPayload());
       await logout();
     } catch (error) {
-      setLifecycleError(error instanceof Error ? error.message : "The account could not be deactivated.");
+      setLifecycleError(getUserMessage(error, "The account could not be deactivated."));
       setLifecycleBusy(false);
       setStepUpPassword("");
       setStepUpCode("");

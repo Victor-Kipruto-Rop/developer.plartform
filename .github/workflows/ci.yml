@@ -10,7 +10,7 @@ permissions:
 
 concurrency:
   group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   backend:
@@ -34,18 +34,38 @@ jobs:
       - name: Assert database-backed tests actually ran
         working-directory: backend
         run: |
-          total=$(grep -ho 'tests="[0-9]*"' build/test-results/test/TEST-*.xml | grep -o '[0-9]*' | paste -sd+ | bc)
-          skipped=$(grep -ho 'skipped="[0-9]*"' build/test-results/test/TEST-*.xml | grep -o '[0-9]*' | paste -sd+ | bc)
-          echo "tests=$total skipped=$skipped"
-          if [ "$skipped" -ne 0 ]; then
-            echo "::error::Database-backed tests were skipped. Migration and Hibernate validation are unverified."
+          set -euo pipefail
+          optional_sync_report="build/test-results/test/TEST-com.pesaguard.backend.credentials.api.PipelineApiKeySynchronizerTest.xml"
+          reports=(build/test-results/test/TEST-*.xml)
+          if (( ${#reports[@]} == 0 )); then
+            echo "::error::No JUnit test reports were generated."
             exit 1
+          fi
+          for report in "${reports[@]}"; do
+            [[ "$report" == "$optional_sync_report" ]] && continue
+            if grep -qE 'skipped="[1-9][0-9]*"' "$report"; then
+              echo "::error::Tests were skipped in $report. Database-backed migrations and integration checks must run in CI."
+              exit 1
+            fi
+          done
+          if [[ -f "$optional_sync_report" ]]; then
+            total_optional_skips=$(grep -c '<skipped ' "$optional_sync_report" || true)
+            if grep -A2 -F 'name="syncsActiveKeyWhenIntegrationTargetIsConfigured()"' \
+              "$optional_sync_report" | grep -q '<skipped '; then
+              expected_optional_skips=1
+            else
+              expected_optional_skips=0
+            fi
+            if (( total_optional_skips != expected_optional_skips )); then
+              echo "::error::Only the opt-in pipeline target smoke test may be skipped."
+              exit 1
+            fi
+            echo "Allowed skipped tests in optional pipeline sync smoke test: $expected_optional_skips"
           fi
       - name: Build boot jar
         working-directory: backend
         run: ./gradlew bootJar --no-daemon
       - name: Secret-pattern scan
-        working-directory: .
         run: |
           if git grep -nE 'BEGIN (RSA|OPENSSH|EC|DSA) PRIVATE KEY|AKIA[0-9A-Z]{16}' -- ':!*.lock' ':!backend/build/**'; then
             echo 'Potential secret material found.'
@@ -55,39 +75,101 @@ jobs:
         uses: gradle/actions/dependency-submission@v4
         with:
           gradle-build-file: backend/build.gradle
-
-      - name: Generate SBOM (CycloneDX)
-        # Trivy produces the SBOM rather than a Gradle plugin: no new build
-        # dependency to resolve, and it works from the image just scanned.
-        uses: aquasecurity/trivy-action@0.28.0
-        with:
-          image-ref: pesaguard-developer-platform:ci
-          format: cyclonedx
-          output: sbom.cdx.json
-          upload-artifact: false
       - name: Fail on vulnerable dependencies, secrets, and misconfiguration
-        working-directory: backend
         uses: aquasecurity/trivy-action@0.28.0
         with:
           scan-type: fs
-          scan-ref: .
+          scan-ref: backend
           scanners: vuln,secret,misconfig
           severity: HIGH,CRITICAL
           ignore-unfixed: true
           exit-code: '1'
 
-  image:
+  frontend:
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install dependencies
+        run: npm ci
+      - name: Type-check frontend
+        run: npm run typecheck
+      - name: Build frontend
+        run: npm run build
+
+  image:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      image-name: ${{ steps.image.outputs.name }}
+      digest: ${{ steps.build.outputs.digest }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set immutable image name
+        id: image
+        run: echo "name=ghcr.io/${GITHUB_REPOSITORY,,}/developer-platform" >> "$GITHUB_OUTPUT"
+      - uses: docker/setup-buildx-action@v3
+      - name: Log in to GitHub Container Registry
+        if: github.event_name == 'push'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
       - name: Build image
-        run: docker build -t pesaguard-developer-platform:ci .
-      - name: Trivy image scan (fails on HIGH/CRITICAL)
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile
+          push: ${{ github.event_name == 'push' }}
+          load: ${{ github.event_name == 'pull_request' }}
+          tags: ${{ steps.image.outputs.name }}:sha-${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - name: Scan pull-request image
+        if: github.event_name == 'pull_request'
         uses: aquasecurity/trivy-action@0.28.0
         with:
-          image-ref: pesaguard-developer-platform:ci
+          scan-type: image
+          image-ref: ${{ steps.image.outputs.name }}:sha-${{ github.sha }}
           severity: HIGH,CRITICAL
           exit-code: '1'
+      - name: Scan published immutable image
+        if: github.event_name == 'push'
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          scan-type: image
+          image-ref: ${{ steps.image.outputs.name }}@${{ steps.build.outputs.digest }}
+          severity: HIGH,CRITICAL
+          exit-code: '1'
+      - name: Generate SBOM for the published image digest
+        if: github.event_name == 'push'
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          scan-type: image
+          image-ref: ${{ steps.image.outputs.name }}@${{ steps.build.outputs.digest }}
+          format: cyclonedx
+          output: sbom.cdx.json
+          upload-artifact: false
+      - name: Retain image SBOM
+        if: github.event_name == 'push'
+        uses: actions/upload-artifact@v4
+        with:
+          name: developer-platform-sbom-${{ github.sha }}
+          path: sbom.cdx.json
+          if-no-files-found: error
+          retention-days: 90
+
   sast:
     name: Static analysis
     runs-on: ubuntu-latest
@@ -96,8 +178,6 @@ jobs:
       security-events: write
     steps:
       - uses: actions/checkout@v4
-      # CodeQL over the Java build. Runs in parallel with the test job so a finding
-      # does not gate an unrelated build for as long as the suite takes.
       - name: Initialize CodeQL
         uses: github/codeql-action/init@v3
         with:
@@ -107,73 +187,233 @@ jobs:
         uses: github/codeql-action/analyze@v3
         with:
           category: '/language:java'
-  # ---------------------------------------------------------------------------
-  # Staging, smoke tests, then production behind a human approval gate.
-  #
-  # Smoke tests are a separate job rather than extra assertions inside the build
-  # job, because they run against a real deployment: they catch the class of
-  # failure that only appears once migrations, Redis, and a pod are all present.
-  # ---------------------------------------------------------------------------
+
   staging:
-    needs: [backend, image]
+    needs: [backend, frontend, image, sast]
+    if: github.event_name == 'push'
     runs-on: ubuntu-latest
-    environment: staging
+    environment:
+      name: staging
+      url: ${{ vars.DEPLOYMENT_URL }}
+    env:
+      DEPLOYMENT_URL: ${{ vars.DEPLOYMENT_URL }}
+      KUBECONFIG_CONTENT: ${{ secrets.KUBECONFIG }}
+      GHCR_PULL_USERNAME: ${{ vars.GHCR_PULL_USERNAME }}
+      GHCR_PULL_TOKEN: ${{ secrets.GHCR_PULL_TOKEN }}
+      PROMETHEUS_URL: ${{ vars.PROMETHEUS_URL }}
+      PESAGUARD_UP_QUERY: ${{ vars.PESAGUARD_UP_QUERY }}
+      PROMETHEUS_BEARER_TOKEN: ${{ secrets.PROMETHEUS_BEARER_TOKEN }}
     steps:
       - uses: actions/checkout@v4
-      - name: Deploy to staging
+      - uses: azure/setup-kubectl@v4
+      - name: Validate protected staging environment configuration
         run: |
-          kubectl --kubeconfig="$STAGING_KUBECONFIG" -n staging apply -f infrastructure/kubernetes/
-          kubectl --kubeconfig="$STAGING_KUBECONFIG" -n staging rollout status \
-            deployment/pesaguard-developer-platform --timeout=5m
-      - name: Smoke test the developer API
+          set -euo pipefail
+          for name in DEPLOYMENT_URL KUBECONFIG_CONTENT GHCR_PULL_USERNAME GHCR_PULL_TOKEN PROMETHEUS_URL PESAGUARD_UP_QUERY; do
+            if [[ -z "${!name}" ]]; then
+              echo "::error::The staging environment must define $name (GitHub environment variable/secret)."
+              exit 1
+            fi
+          done
+          [[ "$DEPLOYMENT_URL" == https://* ]] || { echo "::error::DEPLOYMENT_URL must use HTTPS."; exit 1; }
+          [[ "$PROMETHEUS_URL" == https://* ]] || { echo "::error::PROMETHEUS_URL must use HTTPS."; exit 1; }
+          printf '%s' "$KUBECONFIG_CONTENT" > "$RUNNER_TEMP/kubeconfig"
+          chmod 600 "$RUNNER_TEMP/kubeconfig"
+          echo "KUBECONFIG=$RUNNER_TEMP/kubeconfig" >> "$GITHUB_ENV"
+      - name: Apply scanned immutable image
+        id: apply
+        env:
+          IMAGE_NAME: ${{ needs.image.outputs.image-name }}
+          IMAGE_DIGEST: ${{ needs.image.outputs.digest }}
         run: |
-          base="$STAGING_URL"
-          for i in $(seq 1 30); do
-            if curl -fsS "$base/health/ready" >/dev/null; then break; fi
+          set -euo pipefail
+          [[ "$IMAGE_DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]] || { echo "::error::Image build did not produce an immutable digest."; exit 1; }
+          IMAGE_REF="${IMAGE_NAME}@${IMAGE_DIGEST}"
+          kubectl -n staging create secret docker-registry pesaguard-ghcr \
+            --docker-server=ghcr.io \
+            --docker-username="$GHCR_PULL_USERNAME" \
+            --docker-password="$GHCR_PULL_TOKEN" \
+            --dry-run=client -o yaml | kubectl apply -f -
+          manifest_dir="$RUNNER_TEMP/deployment-manifests"
+          mkdir -p "$manifest_dir"
+          cp -R infrastructure/kubernetes/. "$manifest_dir/"
+          sed -i "s|image: pesaguard-developer-platform:release|image: ${IMAGE_REF}|" "$manifest_dir/deployment.yaml"
+          grep -F "image: ${IMAGE_REF}" "$manifest_dir/deployment.yaml" >/dev/null
+          kubectl -n staging apply -f "$manifest_dir/"
+      - name: Wait for staging rollout
+        run: |
+          set -euo pipefail
+          kubectl -n staging rollout status deployment/pesaguard-developer-platform --timeout=5m
+      - name: Verify database, Redis, and migration readiness
+        run: |
+          set -euo pipefail
+          code=$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' "$DEPLOYMENT_URL/health/ready")
+          if [ "$code" != "200" ]; then
+            echo "::error::Staging application readiness returned $code; startup/migrations or database readiness failed."
+            exit 1
+          fi
+          kubectl -n staging port-forward deployment/pesaguard-developer-platform 19090:9090 >"$RUNNER_TEMP/port-forward.log" 2>&1 &
+          port_forward_pid=$!
+          trap 'kill "$port_forward_pid" 2>/dev/null || true' EXIT
+          ready=false
+          for attempt in $(seq 1 30); do
+            if curl --fail --silent http://127.0.0.1:19090/actuator/health/readiness > "$RUNNER_TEMP/readiness.json"; then
+              ready=true
+              break
+            fi
+            sleep 2
+          done
+          if [ "$ready" != true ]; then
+            cat "$RUNNER_TEMP/port-forward.log"
+            echo "::error::Could not read staging readiness health, including Redis."
+            exit 1
+          fi
+          jq -e '.status == "UP" and .components.redis.status == "UP" and .components.db.status == "UP"' "$RUNNER_TEMP/readiness.json" >/dev/null || {
+            echo "::error::Database or Redis health is not UP in staging."
+            exit 1
+          }
+          curl --fail --silent http://127.0.0.1:19090/actuator/prometheus > "$RUNNER_TEMP/metrics.txt"
+          grep -Eq '^jvm_memory_used_bytes(\{|[[:space:]])' "$RUNNER_TEMP/metrics.txt" || {
+            echo "::error::The Prometheus endpoint did not expose JVM metrics."
+            exit 1
+          }
+      - name: Verify Prometheus is collecting this platform
+        run: |
+          set -euo pipefail
+          auth=()
+          if [[ -n "$PROMETHEUS_BEARER_TOKEN" ]]; then
+            auth=(-H "Authorization: Bearer $PROMETHEUS_BEARER_TOKEN")
+          fi
+          collected=false
+          for attempt in $(seq 1 24); do
+            if curl --fail --silent --show-error "${auth[@]}" --get "$PROMETHEUS_URL/api/v1/query" \
+              --data-urlencode "query=$PESAGUARD_UP_QUERY" > "$RUNNER_TEMP/prometheus-query.json" &&
+              jq -e '.status == "success" and ([.data.result[].value[1] | select(. == "1")] | length > 0)' \
+                "$RUNNER_TEMP/prometheus-query.json" >/dev/null; then
+              collected=true
+              break
+            fi
             sleep 5
           done
-          # A 401 is the expected answer for an unauthenticated protected route.
-          # A 200 here would mean authorization is not being enforced, which is a
-          # failure and not a pass.
-          code=$(curl -s -o /dev/null -w '%{http_code}' "$base/api/v1/scopes")
+          if [ "$collected" != true ]; then
+            echo "::error::Prometheus did not report an UP series for the configured platform selector."
+            exit 1
+          fi
+      - name: Verify public access controls
+        run: |
+          set -euo pipefail
+          code=$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' "$DEPLOYMENT_URL/api/v1/scopes")
           if [ "$code" != "401" ] && [ "$code" != "403" ]; then
-            echo "::error::Expected 401/403 from an unauthenticated protected route, got $code"
+            echo "::error::Expected 401/403 from protected route; received $code."
             exit 1
           fi
-          # The operator API must not be reachable without an operator token.
-          code=$(curl -s -o /dev/null -w '%{http_code}' "$base/internal/organizations")
+          code=$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' "$DEPLOYMENT_URL/internal/organizations")
           if [ "$code" != "401" ]; then
-            echo "::error::Internal admin endpoint returned $code without a token"
+            echo "::error::Internal admin endpoint returned $code without operator credentials."
             exit 1
           fi
-          curl -fsS "$base/health/live"
+          curl --fail --silent --show-error "$DEPLOYMENT_URL/health/live" >/dev/null
 
   production:
-    needs: [staging]
+    needs: [image, staging, sast]
+    if: github.event_name == 'push'
     runs-on: ubuntu-latest
-    # A human must approve. This is the gate that stops a green build from
-    # reaching customers without anyone deciding it should.
     environment:
       name: production
-      url: ${{ vars.PRODUCTION_URL }}
+      url: ${{ vars.DEPLOYMENT_URL }}
+    env:
+      DEPLOYMENT_URL: ${{ vars.DEPLOYMENT_URL }}
+      KUBECONFIG_CONTENT: ${{ secrets.KUBECONFIG }}
+      GHCR_PULL_USERNAME: ${{ vars.GHCR_PULL_USERNAME }}
+      GHCR_PULL_TOKEN: ${{ secrets.GHCR_PULL_TOKEN }}
+      PROMETHEUS_URL: ${{ vars.PROMETHEUS_URL }}
+      PESAGUARD_UP_QUERY: ${{ vars.PESAGUARD_UP_QUERY }}
+      PROMETHEUS_BEARER_TOKEN: ${{ secrets.PROMETHEUS_BEARER_TOKEN }}
     steps:
       - uses: actions/checkout@v4
-      - name: Deploy to production
+      - uses: azure/setup-kubectl@v4
+      - name: Validate protected production environment configuration
         run: |
-          kubectl --kubeconfig="$PRODUCTION_KUBECONFIG" -n production apply -f infrastructure/kubernetes/
-          kubectl --kubeconfig="$PRODUCTION_KUBECONFIG" -n production rollout status \
-            deployment/pesaguard-developer-platform --timeout=10m
-      - name: Verify rollout
+          set -euo pipefail
+          for name in DEPLOYMENT_URL KUBECONFIG_CONTENT GHCR_PULL_USERNAME GHCR_PULL_TOKEN PROMETHEUS_URL PESAGUARD_UP_QUERY; do
+            if [[ -z "${!name}" ]]; then
+              echo "::error::The production environment must define $name (GitHub environment variable/secret)."
+              exit 1
+            fi
+          done
+          [[ "$DEPLOYMENT_URL" == https://* ]] || { echo "::error::DEPLOYMENT_URL must use HTTPS."; exit 1; }
+          [[ "$PROMETHEUS_URL" == https://* ]] || { echo "::error::PROMETHEUS_URL must use HTTPS."; exit 1; }
+          printf '%s' "$KUBECONFIG_CONTENT" > "$RUNNER_TEMP/kubeconfig"
+          chmod 600 "$RUNNER_TEMP/kubeconfig"
+          echo "KUBECONFIG=$RUNNER_TEMP/kubeconfig" >> "$GITHUB_ENV"
+      - name: Apply the same scanned image digest used in staging
+        id: apply
+        env:
+          IMAGE_NAME: ${{ needs.image.outputs.image-name }}
+          IMAGE_DIGEST: ${{ needs.image.outputs.digest }}
         run: |
-          kubectl --kubeconfig="$PRODUCTION_KUBECONFIG" -n production get pods -l app.kubernetes.io/name=pesaguard-developer-platform
-          code=$(curl -s -o /dev/null -w '%{http_code}' "${{ vars.PRODUCTION_URL }}/health/ready")
+          set -euo pipefail
+          [[ "$IMAGE_DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]] || { echo "::error::Image build did not produce an immutable digest."; exit 1; }
+          IMAGE_REF="${IMAGE_NAME}@${IMAGE_DIGEST}"
+          kubectl -n production create secret docker-registry pesaguard-ghcr \
+            --docker-server=ghcr.io \
+            --docker-username="$GHCR_PULL_USERNAME" \
+            --docker-password="$GHCR_PULL_TOKEN" \
+            --dry-run=client -o yaml | kubectl apply -f -
+          manifest_dir="$RUNNER_TEMP/deployment-manifests"
+          mkdir -p "$manifest_dir"
+          cp -R infrastructure/kubernetes/. "$manifest_dir/"
+          sed -i "s|image: pesaguard-developer-platform:release|image: ${IMAGE_REF}|" "$manifest_dir/deployment.yaml"
+          grep -F "image: ${IMAGE_REF}" "$manifest_dir/deployment.yaml" >/dev/null
+          kubectl -n production apply -f "$manifest_dir/"
+      - name: Wait for production rollout
+        run: |
+          set -euo pipefail
+          kubectl -n production rollout status deployment/pesaguard-developer-platform --timeout=10m
+      - name: Verify production health, Redis, and collected metrics
+        run: |
+          set -euo pipefail
+          code=$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' "$DEPLOYMENT_URL/health/ready")
           if [ "$code" != "200" ]; then
-            echo "::error::Production readiness returned $code"
+            echo "::error::Production readiness returned $code."
             exit 1
           fi
-      - name: Roll back on failure
-        if: failure()
-        run: |
-          # A failed production verification is not a reason to leave the bad
-          # revision serving traffic.
-          kubectl --kubeconfig="$PRODUCTION_KUBECONFIG" -n production rollout undo deployment/pesaguard-developer-platform
+          kubectl -n production port-forward deployment/pesaguard-developer-platform 19090:9090 >"$RUNNER_TEMP/port-forward.log" 2>&1 &
+          port_forward_pid=$!
+          trap 'kill "$port_forward_pid" 2>/dev/null || true' EXIT
+          ready=false
+          for attempt in $(seq 1 30); do
+            if curl --fail --silent http://127.0.0.1:19090/actuator/health/readiness > "$RUNNER_TEMP/readiness.json"; then
+              ready=true
+              break
+            fi
+            sleep 2
+          done
+          if [ "$ready" != true ]; then
+            cat "$RUNNER_TEMP/port-forward.log"
+            echo "::error::Could not read production readiness health, including Redis."
+            exit 1
+          fi
+          jq -e '.status == "UP" and .components.redis.status == "UP" and .components.db.status == "UP"' "$RUNNER_TEMP/readiness.json" >/dev/null || {
+            echo "::error::Database or Redis health is not UP in production."
+            exit 1
+          }
+          curl --fail --silent http://127.0.0.1:19090/actuator/prometheus > "$RUNNER_TEMP/metrics.txt"
+          grep -Eq '^jvm_memory_used_bytes(\{|[[:space:]])' "$RUNNER_TEMP/metrics.txt" || {
+            echo "::error::The Prometheus endpoint did not expose JVM metrics."
+            exit 1
+          }
+          auth=()
+          if [[ -n "$PROMETHEUS_BEARER_TOKEN" ]]; then
+            auth=(-H "Authorization: Bearer $PROMETHEUS_BEARER_TOKEN")
+          fi
+          curl --fail --silent --show-error "${auth[@]}" --get "$PROMETHEUS_URL/api/v1/query" \
+            --data-urlencode "query=$PESAGUARD_UP_QUERY" > "$RUNNER_TEMP/prometheus-query.json"
+          jq -e '.status == "success" and ([.data.result[].value[1] | select(. == "1")] | length > 0)' \
+            "$RUNNER_TEMP/prometheus-query.json" >/dev/null || {
+              echo "::error::Prometheus did not report an UP series for the production platform selector."
+              exit 1
+            }
+      - name: Roll back failed production rollout
+        if: failure() && steps.apply.outcome == 'success'
+        run: kubectl -n production rollout undo deployment/pesaguard-developer-platform

@@ -25,7 +25,7 @@
 }
 
 .public-home .public-home-brand {
-  gap: 9px;
+  gap: 3px;
   font-family: var(--font-sans);
   font-size: 16px;
 }
@@ -36,7 +36,7 @@
   height: 33px;
   flex: 0 0 auto;
   object-fit: contain;
-  content: url("/pesaguard-icon.svg");
+  content: url("/pesaguard-brand-mark.svg");
 }
 
 .public-home-header .public-home-brand .brand-logo-reversed {
@@ -47,9 +47,9 @@
   display: inline-flex;
   order: 1;
   color: #111;
-  font-size: 18px;
-  font-weight: 750;
-  letter-spacing: -.04em;
+  font-size: 19px;
+  font-weight: 800;
+  letter-spacing: -.045em;
 }
 
 .public-home .public-home-brand-wordmark > span:last-child {

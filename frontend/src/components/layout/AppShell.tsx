@@ -1,4 +1,5 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode, type KeyboardEvent as ReactKeyboardEvent } from "react";
+import { getUserMessage } from "../../lib/errors";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import {
   Activity,
   ArrowRight,
@@ -71,12 +72,12 @@ type ChangelogEntry = {
   publishedAt: string;
 };
 
+const SESSION_IDLE_TIMEOUT_MS = 30 * 60_000;
+
 interface AppShellProps {
   activePage: PageId;
   onNavigate: (page: PageId) => void;
   features: Record<string, boolean>;
-  onboardingSkipped?: boolean;
-  onResumeOnboarding?: () => void;
   children: ReactNode;
 }
 
@@ -190,8 +191,8 @@ const commandEntries: CommandEntry[] = [
   { id: "open-support-hub", label: "Open support", detail: "Find documentation, developer support, status, tickets, and community links.", keywords: ["support", "help center", "tickets", "incidents", "community", "announcements"], group: "Help", icon: LifeBuoy, action: { kind: "navigate", page: "support-hub" } },
 ];
 
-export function AppShell({ activePage, onNavigate, features, onboardingSkipped = false, onResumeOnboarding, children }: AppShellProps) {
-  const { status, user, organization, sessionExpiresAt, switchWorkspace, hasPermission, permissionsLoaded, logout, welcomePending, consumeWelcome } = useAuth();
+export function AppShell({ activePage, onNavigate, features, children }: AppShellProps) {
+  const { status, user, organization, switchWorkspace, hasPermission, permissionsLoaded, logout, welcomePending, consumeWelcome } = useAuth();
   const { showToast } = useToast();
   const connected = status === "authenticated";
   const profileName = user?.displayName || user?.email || "Developer";
@@ -200,6 +201,10 @@ export function AppShell({ activePage, onNavigate, features, onboardingSkipped =
   const [sessionRemainingMs, setSessionRemainingMs] = useState<number | null>(null);
   const [sessionExtending, setSessionExtending] = useState(false);
   const [sessionExtendError, setSessionExtendError] = useState("");
+  const lastActivityAtRef = useRef<number | null>(null);
+  const idleExpiredRef = useRef(false);
+  const sessionActivityStorageKey = `pesaguard.last-activity.${user?.id ?? "guest"}`;
+  const previousSessionActivityStorageKeyRef = useRef(sessionActivityStorageKey);
   const sidebarStorageKey = `pesaguard.sidebar-collapsed.${user?.id ?? "guest"}`;
   const organizationName = organization?.name || (connected ? "Organization unavailable" : "Sign in to load organization");
   const [workspaces, setWorkspaces] = useState<WorkspaceSummary[]>([]);
@@ -236,17 +241,77 @@ export function AppShell({ activePage, onNavigate, features, onboardingSkipped =
     document.title = `${activeNavigationLabel} | PesaGuard Developer Platform`;
   }, [activeNavigationLabel]);
 
+  const markSessionActivity = useCallback((force = false) => {
+    if (!connected || (!force && idleExpiredRef.current)) return;
+    const now = Date.now();
+    if (!force && now - (lastActivityAtRef.current ?? 0) < 15_000) return;
+    lastActivityAtRef.current = now;
+    idleExpiredRef.current = false;
+    window.localStorage.setItem(sessionActivityStorageKey, String(now));
+    setSessionRemainingMs(SESSION_IDLE_TIMEOUT_MS);
+    setSessionExtendError("");
+  }, [connected, sessionActivityStorageKey]);
+
   useEffect(() => {
-    const expiresAt = sessionExpiresAt ? Date.parse(sessionExpiresAt) : Number.NaN;
-    if (!connected || Number.isNaN(expiresAt)) {
+    if (!connected) {
+      lastActivityAtRef.current = null;
+      idleExpiredRef.current = false;
       setSessionRemainingMs(null);
+      if (status === "guest") {
+        window.localStorage.removeItem(previousSessionActivityStorageKeyRef.current);
+        window.localStorage.removeItem(sessionActivityStorageKey);
+        previousSessionActivityStorageKeyRef.current = sessionActivityStorageKey;
+      }
       return;
     }
-    const updateRemaining = () => setSessionRemainingMs(Math.max(0, expiresAt - Date.now()));
+
+    if (previousSessionActivityStorageKeyRef.current !== sessionActivityStorageKey) {
+      window.localStorage.removeItem(previousSessionActivityStorageKeyRef.current);
+    }
+    previousSessionActivityStorageKeyRef.current = sessionActivityStorageKey;
+
+    const now = Date.now();
+    const storedActivityAt = Number(window.localStorage.getItem(sessionActivityStorageKey));
+    const initialActivityAt = Number.isFinite(storedActivityAt) && storedActivityAt > 0 && storedActivityAt <= now
+      ? storedActivityAt
+      : now;
+    lastActivityAtRef.current = initialActivityAt;
+    if (!Number.isFinite(storedActivityAt) || storedActivityAt <= 0 || storedActivityAt > now) {
+      window.localStorage.setItem(sessionActivityStorageKey, String(initialActivityAt));
+    }
+
+    const updateRemaining = () => {
+      const currentTime = Date.now();
+      const latestActivityAt = Number(window.localStorage.getItem(sessionActivityStorageKey));
+      const lastActivityAt = Number.isFinite(latestActivityAt) && latestActivityAt > 0 && latestActivityAt <= currentTime
+        ? latestActivityAt
+        : lastActivityAtRef.current ?? currentTime;
+      lastActivityAtRef.current = lastActivityAt;
+      const remaining = Math.max(0, SESSION_IDLE_TIMEOUT_MS - (currentTime - lastActivityAt));
+      idleExpiredRef.current = remaining === 0;
+      setSessionRemainingMs(remaining);
+    };
+    const activityEvents = ["pointerdown", "pointermove", "keydown", "wheel", "touchstart"] as const;
+    const onActivity = () => markSessionActivity();
+    const onStorage = (event: StorageEvent) => {
+      if (event.key === sessionActivityStorageKey) updateRemaining();
+    };
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "visible") updateRemaining();
+    };
+    activityEvents.forEach((eventName) => window.addEventListener(eventName, onActivity, { passive: true }));
+    window.addEventListener("storage", onStorage);
+    document.addEventListener("visibilitychange", onVisibilityChange);
     updateRemaining();
     const interval = window.setInterval(updateRemaining, 1000);
-    return () => window.clearInterval(interval);
-  }, [connected, sessionExpiresAt]);
+
+    return () => {
+      activityEvents.forEach((eventName) => window.removeEventListener(eventName, onActivity));
+      window.removeEventListener("storage", onStorage);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+      window.clearInterval(interval);
+    };
+  }, [connected, markSessionActivity, sessionActivityStorageKey, status]);
 
   useEffect(() => {
     setSidebarCollapsed(readSidebarCollapsed(sidebarStorageKey));
@@ -303,7 +368,7 @@ export function AppShell({ activePage, onNavigate, features, onboardingSkipped =
     try {
       await switchWorkspace(workspaceId);
     } catch (error) {
-      setWorkspaceError(error instanceof Error ? error.message : "Workspace switch failed.");
+      setWorkspaceError(getUserMessage(error, "Workspace switch failed."));
     } finally {
       setSwitchingWorkspace(false);
     }
@@ -406,7 +471,7 @@ export function AppShell({ activePage, onNavigate, features, onboardingSkipped =
       })
       .catch((cause: unknown) => {
         if (!controller.signal.aborted) {
-          setSelectorError(cause instanceof Error ? cause.message : "Projects could not be loaded.");
+          setSelectorError(getUserMessage(cause, "Projects could not be loaded."));
           setSelectorProjects([]);
         }
       })
@@ -447,7 +512,7 @@ export function AppShell({ activePage, onNavigate, features, onboardingSkipped =
       })
       .catch((cause: unknown) => {
         if (!controller.signal.aborted) {
-          setSelectorError(cause instanceof Error ? cause.message : "Project environments could not be loaded.");
+          setSelectorError(getUserMessage(cause, "Project environments could not be loaded."));
           setSelectorEnvironments([]);
         }
       })
@@ -560,7 +625,7 @@ export function AppShell({ activePage, onNavigate, features, onboardingSkipped =
           if (active) {
             setNotificationUnreadCount(null);
             setFeedbackUnreadCount(null);
-            setNotificationError(error instanceof Error ? error.message : "Could not load notifications.");
+            setNotificationError(getUserMessage(error, "Could not load notifications."));
           }
         })
         .finally(() => { loading = false; });
@@ -596,7 +661,7 @@ export function AppShell({ activePage, onNavigate, features, onboardingSkipped =
     apiData<ChangelogEntry[]>("/api/v1/changelog", { anonymous: true })
       .then((entries) => { if (active) setChangelogEntries(entries); })
       .catch((cause: unknown) => {
-        if (active) setChangelogError(cause instanceof Error ? cause.message : "Unable to load product updates.");
+        if (active) setChangelogError(getUserMessage(cause, "Unable to load product updates."));
       })
       .finally(() => { if (active) setChangelogLoading(false); });
     return () => { active = false; };
@@ -859,19 +924,19 @@ export function AppShell({ activePage, onNavigate, features, onboardingSkipped =
 
   const sessionTimeoutVisible = connected
     && sessionRemainingMs !== null
-    && sessionRemainingMs <= 120_000;
-  const sessionTimeLabel = sessionRemainingMs === null
-    ? ""
-    : `${Math.floor(sessionRemainingMs / 60_000)}:${String(Math.floor((sessionRemainingMs % 60_000) / 1000)).padStart(2, "0")}`;
+    && sessionRemainingMs === 0;
 
   async function keepSessionActive() {
     setSessionExtending(true);
     setSessionExtendError("");
+    markSessionActivity(true);
     try {
       await refreshSession();
       showToast({ kind: "success", title: "Session extended", message: "You can continue working." });
     } catch (error) {
-      setSessionExtendError(error instanceof Error ? error.message : "The session could not be extended.");
+      idleExpiredRef.current = true;
+      setSessionRemainingMs(0);
+      setSessionExtendError(getUserMessage(error, "The session could not be extended."));
     } finally {
       setSessionExtending(false);
     }
@@ -890,7 +955,7 @@ export function AppShell({ activePage, onNavigate, features, onboardingSkipped =
       <aside id="developer-sidebar" className={`sidebar${sidebarOpen ? " sidebar--open" : ""}`} aria-label="Developer navigation">
         <div className="sidebar-brand-row">
           <button className="brand-lockup" type="button" onClick={() => navigate("overview")} aria-label="Open workspace overview">
-            <img src="/pesaguard-icon.svg" alt="" width="25" height="27" />
+            <img src="/pesaguard-brand-mark.svg" alt="" width="30" height="32" />
             <span className="brand-name">Pesa<span>Guard</span></span>
           </button>
           <button
@@ -1022,8 +1087,6 @@ export function AppShell({ activePage, onNavigate, features, onboardingSkipped =
             <Menu size={19} />
           </button>
           <div className="breadcrumbs">
-            <span>{organizationName}</span>
-            <span className="breadcrumb-separator">/</span>
             <strong>{activeNavigationLabel}</strong>
           </div>
           <div className="topbar-actions">
@@ -1085,10 +1148,6 @@ export function AppShell({ activePage, onNavigate, features, onboardingSkipped =
         </header>
 
         <main className="main-content" id="main-content">
-          {onboardingSkipped && <section className="onboarding-resume-banner" aria-label="Onboarding reminder">
-            <div><strong>Finish setting up PesaGuard</strong><p>Your progress is saved. Resume the guided setup when you are ready.</p></div>
-            {onResumeOnboarding && <button type="button" onClick={onResumeOnboarding}>Resume onboarding<ArrowRight size={15} /></button>}
-          </section>}
           {children}
         </main>
       </div>
@@ -1140,11 +1199,9 @@ export function AppShell({ activePage, onNavigate, features, onboardingSkipped =
           <section className="session-timeout-dialog" role="alertdialog" aria-modal="true" aria-labelledby="session-timeout-title" aria-describedby="session-timeout-copy">
             <span className="session-timeout-icon"><Clock size={21} aria-hidden="true" /></span>
             <span className="section-eyebrow">SESSION SECURITY</span>
-            <h2 id="session-timeout-title">{sessionRemainingMs === 0 ? "Your session has expired" : "Your session is about to expire"}</h2>
+            <h2 id="session-timeout-title">Your session has expired</h2>
             <p id="session-timeout-copy">
-              {sessionRemainingMs === 0
-                ? "Reconnect to continue working in your developer workspace."
-                : <>For your security, your session expires in <strong>{sessionTimeLabel}</strong>. Extend it now to keep working.</>}
+              You were inactive for 30 minutes. Sign in again, or stay signed in to continue working.
             </p>
             {sessionExtendError && <p className="form-error" role="alert">{sessionExtendError}</p>}
             <div className="session-timeout-actions">

@@ -1,3 +1,5 @@
+import { ValidatedForm } from "../../components/forms/ValidatedForm";
+import { getUserMessage } from "../../lib/errors";
 import { useEffect, useState, type FormEvent } from "react";
 import { KeyRound, Plus, RefreshCw, ShieldCheck } from "lucide-react";
 import { PageHeader } from "../../components/ui/PageHeader";
@@ -49,7 +51,7 @@ export function OAuthApplicationsPage() {
         setApplications(items);
       })
       .catch((requestError: unknown) => {
-        if (!controller.signal.aborted) setError(requestError instanceof Error ? requestError.message : "Could not load OAuth applications.");
+        if (!controller.signal.aborted) setError(getUserMessage(requestError, "Could not load OAuth applications."));
       })
       .finally(() => { if (!controller.signal.aborted) setLoading(false); });
     return () => controller.abort();
@@ -80,7 +82,7 @@ export function OAuthApplicationsPage() {
       setFormOpen(false);
       setRefreshKey((key) => key + 1);
     } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : "The OAuth application could not be created.");
+      setError(getUserMessage(requestError, "The OAuth application could not be created."));
     } finally {
       setSaving(false);
     }
@@ -105,13 +107,13 @@ export function OAuthApplicationsPage() {
           </div>
           <span className="table-tag">SECRET SHOWN ONCE</span>
         </div>
-        <form className="workflow-form oauth-register-form" onSubmit={(event) => void createApplication(event)}>
+        <ValidatedForm className="workflow-form oauth-register-form" onSubmit={(event) => void createApplication(event)}>
           <label>Application name<input required minLength={2} maxLength={120} value={name} onChange={(event) => setName(event.target.value)} /></label>
           <label>Description<input maxLength={500} value={description} onChange={(event) => setDescription(event.target.value)} /></label>
           <label>Redirect URI<input required type="url" maxLength={512} value={redirectUri} onChange={(event) => setRedirectUri(event.target.value)} placeholder="https://example.com/oauth/callback" /></label>
           <label>Allowed origin (optional)<input type="url" maxLength={255} value={origin} onChange={(event) => setOrigin(event.target.value)} placeholder="https://example.com" /></label>
           <div className="workflow-form-actions"><button className="button button--secondary" type="button" disabled={saving} onClick={() => setFormOpen(false)}>Cancel</button><button className="button button--primary" type="submit" disabled={saving}><Plus size={14} />{saving ? "Registering…" : "Register application"}</button></div>
-        </form>
+        </ValidatedForm>
       </section>}
       <section className="panel table-panel"><div className="panel-heading"><div><h2>Registered applications</h2><p>Persisted OAuth clients and registered callbacks.</p></div><span className="table-tag">{applications.length} RECORDS</span></div>
         {loading ? <p className="workflow-hint" role="status">Loading applications…</p> : applications.length === 0 ? <div className="organization-live-empty"><KeyRound size={18} />No OAuth applications returned by the API.</div> :

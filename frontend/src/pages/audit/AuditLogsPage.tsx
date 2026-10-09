@@ -1,3 +1,4 @@
+import { getUserMessage } from "../../lib/errors";
 import { useEffect, useState } from "react";
 import { Download, RefreshCw } from "lucide-react";
 import { PageHeader } from "../../components/ui/PageHeader";
@@ -33,7 +34,7 @@ export function AuditLogsPage() {
       setTotal(result.totalElements);
       setTotalPages(result.totalPages);
     } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : "Could not load audit events.");
+      setError(getUserMessage(requestError, "Could not load audit events."));
     } finally {
       setLoading(false);
     }
@@ -53,7 +54,7 @@ export function AuditLogsPage() {
       link.click();
       window.setTimeout(() => URL.revokeObjectURL(url), 0);
     } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : "Audit export could not be downloaded.");
+      setError(getUserMessage(requestError, "Audit export could not be downloaded."));
     } finally {
       setExporting(false);
     }

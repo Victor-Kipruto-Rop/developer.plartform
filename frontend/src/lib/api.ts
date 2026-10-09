@@ -35,6 +35,15 @@ import {
   publishRotated,
   publishSignedOut,
 } from "./session";
+import {
+  AppError,
+  generateRequestId,
+  getUserMessage,
+  normalizeError,
+  reportError,
+  type AppErrorCode,
+} from "./errors";
+import { currentValidationForm, publishFieldViolations } from "./formValidation";
 
 type ViteEnvironment = {
   VITE_API_BASE_URL?: string;
@@ -58,7 +67,7 @@ export const SAFE_ERROR_MESSAGES = {
   LOAD_FAILED: "We couldn't load this information.",
   SAVE_FAILED: "We couldn't save your changes.",
   DELETE_FAILED: "We couldn't complete the deletion.",
-  NETWORK_ERROR: "We couldn't complete the request right now. Please try again.",
+  NETWORK_ERROR: "We couldn't connect to PesaGuard. Check your internet connection and try again.",
   TIMEOUT: "The request took too long to complete. Please try again.",
   UNAUTHORIZED: "Please sign in to continue.",
   FORBIDDEN: "You don't have permission to perform this action.",
@@ -72,6 +81,9 @@ export const SAFE_ERROR_MESSAGES = {
 
 function safeMessageForStatus(status: number, code: string): string {
   switch (code) {
+    case "SESSION_EXPIRED":
+    case "REFRESH_TOKEN_REUSE":
+      return "Your session has expired. Please sign in again.";
     case "INVALID_CREDENTIALS":
     case "LOGIN_FAILED":
       return "We couldn't sign you in with those details.";
@@ -90,8 +102,12 @@ function safeMessageForStatus(status: number, code: string): string {
       return "Username must be 6 to 25 lowercase letters (a-z) and cannot be an email address.";
     case "USERNAME_ALREADY_TAKEN":
       return "That username is already in use. Choose another one.";
+    case "ORGANIZATION_NAME_INVALID":
+      return "Enter an organization name between 2 and 120 characters.";
+    case "PHONE_ALREADY_REGISTERED":
+      return "This phone number is already in use. Use a different number or sign in.";
     case "EMAIL_ALREADY_REGISTERED":
-      return "An account already exists for this email. Sign in or reset your password.";
+      return "We couldn't complete registration. Check your details and try again.";
     case "REGISTRATION_DISABLED":
       return "New account registration is currently unavailable.";
     case "RESOURCE_CONFLICT":
@@ -105,26 +121,49 @@ function safeMessageForStatus(status: number, code: string): string {
   if (status === 404) return SAFE_ERROR_MESSAGES.NOT_FOUND;
   if (status === 409) return SAFE_ERROR_MESSAGES.CONFLICT;
   if (status === 422) return SAFE_ERROR_MESSAGES.VALIDATION;
+  if (status === 408) return SAFE_ERROR_MESSAGES.TIMEOUT;
   if (status === 429) return SAFE_ERROR_MESSAGES.RATE_LIMITED;
-  if (status === 502) return "We couldn't complete the request right now. Please try again.";
-  if (status === 503) return SAFE_ERROR_MESSAGES.SERVICE_UNAVAILABLE;
+  if (status === 502 || status === 503) return SAFE_ERROR_MESSAGES.SERVICE_UNAVAILABLE;
   if (status === 504) return SAFE_ERROR_MESSAGES.TIMEOUT;
-  if (status >= 500) return SAFE_ERROR_MESSAGES.UNKNOWN_ERROR;
+  if (status >= 500) return "Something went wrong on our side. Please try again shortly.";
   return SAFE_ERROR_MESSAGES.REQUEST_FAILED;
+}
+
+function appCodeForStatus(status: number, code: string): AppErrorCode {
+  if (code === "INVALID_CREDENTIALS" || code === "LOGIN_FAILED") return "AUTHENTICATION_FAILED";
+  if (code === "SESSION_EXPIRED" || code === "REFRESH_TOKEN_REUSE") return "SESSION_EXPIRED";
+  if (status === 408) return "TIMEOUT";
+  if (status === 401) return "AUTHENTICATION_REQUIRED";
+  if (status === 403) return "AUTHORIZATION_DENIED";
+  if (status === 404) return "NOT_FOUND";
+  if (status === 409) return "CONFLICT";
+  if (status === 422) return "VALIDATION_ERROR";
+  if (status === 429) return "RATE_LIMITED";
+  if (status === 502 || status === 503 || status === 504) return "SERVICE_UNAVAILABLE";
+  if (status >= 500) return "SERVER_ERROR";
+  return "UNKNOWN_ERROR";
 }
 
 function safeViolations(violations: ApiViolation[] | null | undefined): ApiViolation[] {
   if (!Array.isArray(violations)) return [];
-  return violations.slice(0, 20).map(() => ({
-    field: "request",
-    message: "Please check the information you entered.",
-  }));
+  return violations.slice(0, 20).map((violation) => {
+    const field = typeof violation?.field === "string" ? violation.field : "";
+    return {
+      field: /^[A-Za-z][A-Za-z0-9_.-]{0,63}$/.test(field) ? field : "request",
+      message: "Please check the information you entered.",
+    };
+  });
 }
 
 function safeRequestId(value: string | null | undefined): string | null {
   return value && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value)
     ? value
     : null;
+}
+
+function requestTraceId(headers: Headers): string | null {
+  const value = headers.get("X-Trace-ID") ?? headers.get("traceparent");
+  return value && /^[A-Za-z0-9._:-]{1,128}$/.test(value) ? value : null;
 }
 
 /**
@@ -135,10 +174,10 @@ function safeRequestId(value: string | null | undefined): string | null {
  * `Error.message` loses that, which is why the previous implementation threw
  * bare `Error`s and pages could only guess.
  */
-export class ApiError extends Error {
+export class ApiError extends AppError {
+  fieldViolationsMapped = false;
   readonly status: number;
   readonly code: string;
-  private readonly requestId: string | null;
   readonly timestamp: string | null;
   readonly violations: ApiViolation[];
   /**
@@ -158,15 +197,20 @@ export class ApiError extends Error {
   readonly loginChallengeResendAvailableAt: string | null;
   readonly maskedLoginEmail: string | null;
 
-  constructor(status: number, body: ApiErrorBody | null, _fallback: string) {
+  constructor(
+    status: number,
+    body: ApiErrorBody | null,
+    _fallback: string,
+    metadata: { requestId?: string | null; traceId?: string | null } = {},
+  ) {
     const code = body?.code && /^[A-Z][A-Z0-9_]{1,63}$/.test(body.code)
       ? body.code
       : "UNKNOWN";
-    super(safeMessageForStatus(status, code));
+    const requestId = safeRequestId(body?.requestId) ?? safeRequestId(metadata.requestId);
+    super(appCodeForStatus(status, code), safeMessageForStatus(status, code), status, requestId, metadata.traceId);
     this.name = "ApiError";
     this.status = status;
     this.code = code;
-    this.requestId = safeRequestId(body?.requestId);
     this.timestamp = body?.timestamp ?? null;
     this.violations = safeViolations(body?.violations);
     this.selectableOrganizations = body?.selectableOrganizations ?? [];
@@ -198,49 +242,51 @@ export class ApiError extends Error {
  * Keeping it distinct from a server error lets every page show a useful retry
  * message without claiming that an operation reached the backend.
  */
-export class NetworkRequestError extends Error {
+export class NetworkRequestError extends AppError {
   readonly code = "NETWORK_UNAVAILABLE";
 
-  constructor(cause?: unknown) {
-    super(SAFE_ERROR_MESSAGES.NETWORK_ERROR);
+  constructor(cause?: unknown, requestId?: string) {
+    super("NETWORK_ERROR", SAFE_ERROR_MESSAGES.NETWORK_ERROR, undefined, requestId, undefined, cause);
     this.name = "NetworkRequestError";
-    void cause;
   }
 }
 
-function networkError(cause: unknown): Error {
-  if (cause instanceof DOMException && cause.name === "AbortError") {
-    return new Error("This request was cancelled.");
-  }
-  return new NetworkRequestError(cause);
-}
-
-export class RequestTimeoutError extends Error {
-  readonly code = "TIMEOUT";
+export class RequestAbortedError extends AppError {
+  readonly code = "REQUEST_ABORTED";
 
   constructor() {
-    super(SAFE_ERROR_MESSAGES.TIMEOUT);
+    super("REQUEST_ABORTED");
+    this.name = "RequestAbortedError";
+  }
+}
+
+function networkError(cause: unknown, requestId?: string): AppError {
+  if (typeof DOMException !== "undefined" && cause instanceof DOMException && cause.name === "AbortError") {
+    return new RequestAbortedError();
+  }
+  return new NetworkRequestError(cause, requestId);
+}
+
+export class RequestTimeoutError extends AppError {
+  readonly code = "TIMEOUT";
+
+  constructor(requestId?: string) {
+    super("TIMEOUT", SAFE_ERROR_MESSAGES.TIMEOUT, undefined, requestId);
     this.name = "RequestTimeoutError";
   }
 }
 
-export class InvalidApiResponseError extends Error {
+export class InvalidApiResponseError extends AppError {
   readonly code = "INVALID_API_RESPONSE";
 
   constructor() {
-    super("We couldn't process the server response. Please try again.");
+    super("INVALID_API_RESPONSE", "We couldn't process the server response. Please try again.");
     this.name = "InvalidApiResponseError";
   }
 }
 
 export function safeUserErrorMessage(error: unknown, fallback: string): string {
-  if (error instanceof ApiError
-    || error instanceof NetworkRequestError
-    || error instanceof RequestTimeoutError
-    || error instanceof InvalidApiResponseError) {
-    return error.message;
-  }
-  return fallback;
+  return getUserMessage(error, fallback);
 }
 
 type SessionListener = (session: ReturnType<typeof persistSession>) => void;
@@ -306,6 +352,7 @@ async function performRefresh(): Promise<AuthSession> {
   let response: Response;
   const controller = new AbortController();
   let timedOut = false;
+  const requestId = generateRequestId();
   const timeout = setTimeout(() => {
     timedOut = true;
     controller.abort();
@@ -313,7 +360,7 @@ async function performRefresh(): Promise<AuthSession> {
   try {
     response = await fetch(`${API_BASE_URL}/api/v1/auth/refresh`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", "X-Request-ID": requestId },
       body: JSON.stringify({ refreshToken }),
       signal: controller.signal,
     });
@@ -321,8 +368,14 @@ async function performRefresh(): Promise<AuthSession> {
     // A missing network must not clear a valid local session. The user can retry
     // when connectivity returns, and the normal refresh flow will decide whether
     // the session itself is still valid.
-    if (timedOut) throw new RequestTimeoutError();
-    throw networkError(cause);
+    if (timedOut) {
+      const error = new RequestTimeoutError(requestId);
+      reportError(error, { method: "POST", requestId });
+      throw error;
+    }
+    const error = networkError(cause, requestId);
+    reportError(error, { method: "POST", requestId });
+    throw error;
   } finally {
     clearTimeout(timeout);
   }
@@ -334,13 +387,21 @@ async function performRefresh(): Promise<AuthSession> {
     clearSession();
     publishSignedOut();
     emitSignedOut();
-    throw new ApiError(
+    const error = new ApiError(
       response.status,
       body,
       body?.code === "REFRESH_TOKEN_REUSE"
         ? "This session was ended for security reasons. Please sign in again."
         : "Your session has ended. Please sign in again.",
+      {
+        requestId: response.headers.get("X-Request-ID") ?? requestId,
+        traceId: requestTraceId(response.headers),
+      },
     );
+    if (response.status >= 500 || response.status === 429) {
+      reportError(error, { method: "POST", status: response.status, requestId: error.requestId, traceId: error.traceId });
+    }
+    throw error;
   }
 
   let payload: ApiEnvelope<AuthSession>;
@@ -364,11 +425,23 @@ async function performRefresh(): Promise<AuthSession> {
 
 function refreshOnce(): Promise<AuthSession> {
   if (!refreshInFlight) {
-    refreshInFlight = performRefresh().finally(() => {
-      // Cleared in `finally` so a failed refresh does not wedge every later
-      // request against a permanently rejected promise.
-      refreshInFlight = null;
-    });
+    refreshInFlight = performRefresh()
+      .catch((error: unknown) => {
+        if (error instanceof AppError) {
+          if (error.appCode === "INVALID_API_RESPONSE") {
+            reportError(error, { method: "POST", requestId: error.requestId });
+          }
+          throw error;
+        }
+        const normalized = normalizeError(error);
+        reportError(normalized, { method: "POST", requestId: normalized.requestId });
+        throw normalized;
+      })
+      .finally(() => {
+        // Cleared in `finally` so a failed refresh does not wedge every later
+        // request against a permanently rejected promise.
+        refreshInFlight = null;
+      });
   }
   return refreshInFlight;
 }
@@ -399,7 +472,8 @@ export type ApiFetchOptions = RequestInit & {
  * <p>Resolves to the unwrapped `data` field rather than the whole envelope, so
  * callers never repeat `.data`. 204 responses resolve to `undefined`.
  */
-export async function apiFetch<T>(path: string, options: ApiFetchOptions = {}): Promise<T> {
+async function performApiFetch<T>(path: string, options: ApiFetchOptions = {}): Promise<T> {
+  const validationForm = currentValidationForm();
   const { skipRefresh, anonymous, authorizationToken, requestPolicy, baseUrl, responseType = "json", onResponse, ...init } = options;
 
   // Proactive path: refresh before the token lapses rather than letting this
@@ -414,6 +488,7 @@ export async function apiFetch<T>(path: string, options: ApiFetchOptions = {}): 
   }
 
   const headers = new Headers(init.headers ?? {});
+  let requestId = generateRequestId();
   const token = anonymous ? null : authorizationToken ?? getAccessToken();
   if (token && !headers.has("Authorization")) {
     headers.set("Authorization", `Bearer ${token}`);
@@ -431,11 +506,13 @@ export async function apiFetch<T>(path: string, options: ApiFetchOptions = {}): 
   let response: Response;
 
   for (let attempt = 0; ; attempt += 1) {
+    requestId = generateRequestId();
+    headers.set("X-Request-ID", requestId);
     const controller = new AbortController();
     let timedOut = false;
     let timeout: ReturnType<typeof setTimeout> | undefined;
     let abortExternal: (() => void) | undefined;
-    if (init.signal?.aborted) throw new Error("This request was cancelled.");
+    if (init.signal?.aborted) throw new RequestAbortedError();
     abortExternal = () => controller.abort(init.signal?.reason);
     init.signal?.addEventListener("abort", abortExternal, { once: true });
     timeout = setTimeout(() => {
@@ -459,9 +536,16 @@ export async function apiFetch<T>(path: string, options: ApiFetchOptions = {}): 
         continue;
       }
       if (timedOut) {
-        throw new RequestTimeoutError();
+        const error = new RequestTimeoutError(requestId);
+        reportError(error, { method, requestId });
+        throw error;
       }
-      throw networkError(cause);
+      if (init.signal?.aborted) {
+        throw new RequestAbortedError();
+      }
+      const error = networkError(cause, requestId);
+      reportError(error, { method, requestId });
+      throw error;
     } finally {
       if (timeout !== undefined) clearTimeout(timeout);
       if (abortExternal) init.signal?.removeEventListener("abort", abortExternal);
@@ -515,7 +599,28 @@ export async function apiFetch<T>(path: string, options: ApiFetchOptions = {}): 
     }
   }
 
-  throw new ApiError(response.status, errorBody, SAFE_ERROR_MESSAGES.REQUEST_FAILED);
+  const error = new ApiError(response.status, errorBody, SAFE_ERROR_MESSAGES.REQUEST_FAILED, {
+    requestId: response.headers.get("X-Request-ID") ?? requestId,
+    traceId: requestTraceId(response.headers),
+  });
+  if (response.status === 400 || response.status === 409 || response.status === 422) {
+    error.fieldViolationsMapped = publishFieldViolations(validationForm, error.violations);
+  }
+  if (response.status >= 500 || response.status === 429) {
+    reportError(error, { method, status: response.status, requestId: error.requestId, traceId: error.traceId });
+  }
+  throw error;
+}
+
+export async function apiFetch<T>(path: string, options: ApiFetchOptions = {}): Promise<T> {
+  try {
+    return await performApiFetch<T>(path, options);
+  } catch (error) {
+    if (error instanceof AppError) throw error;
+    const normalized = normalizeError(error);
+    reportError(normalized, { method: (options.method ?? "GET").toUpperCase() });
+    throw normalized;
+  }
 }
 
 /**

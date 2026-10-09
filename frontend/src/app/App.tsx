@@ -56,18 +56,15 @@ import { WebhooksPage } from "../pages/webhooks/WebhooksPage";
 import { LoadTestingPage } from "../pages/load-testing/LoadTestingPage";
 import { EventsPage } from "../pages/events/EventsPage";
 import { DeveloperOnboardingPage } from "../pages/onboarding/DeveloperOnboardingPage";
-import { DeveloperDashboardAccessLoader } from "../features/developer-access/DeveloperDashboardAccessLoader";
 import { LoginPage, RegisterPage } from "../pages/auth/AuthPages";
 import { DeveloperFaqPage } from "../pages/onboarding/DeveloperFaqPage";
 import { DeveloperLegalPage } from "../pages/legal/DeveloperLegalPage";
 import { PublicHomePage } from "../pages/public/PublicHomePage";
 import { MaintenancePage } from "../pages/errors/MaintenancePage";
 import { useAuth } from "../context/AuthContext";
-import * as authApi from "../lib/authApi";
 import { apiData } from "../lib/api";
 import { confirmLeavingUnsavedForm, installUnsavedChangesWarning } from "../lib/unsavedChanges";
 import { featureForPage, isFeatureEnabled, type PlatformRuntimeStatus } from "../lib/runtimeFeatures";
-import type { DeveloperOnboardingStatus } from "../types/auth";
 import { pageIds, type PageId } from "./routes";
 
 function pageFromLocation(): { page: PageId; logId: string | null; goLiveSection?: GoLiveSectionId; apiKeyId?: string } {
@@ -118,9 +115,6 @@ const publicResourceRedirects: Record<string, string> = {
 export default function App() {
   const { status, hasPermission, permissionsLoaded, logout } = useAuth();
   const [runtimeStatus, setRuntimeStatus] = useState<PlatformRuntimeStatus | null>(null);
-  const [workspaceStatus, setWorkspaceStatus] = useState<DeveloperOnboardingStatus | null>(null);
-  const [workspaceError, setWorkspaceError] = useState("");
-  const [workspaceNetworkError, setWorkspaceNetworkError] = useState(false);
   const [location, setLocation] = useState(pageFromLocation);
   const historyPosition = useRef(
     typeof window.history.state?.pesaguardHistoryIndex === "number"
@@ -172,59 +166,25 @@ export default function App() {
   }, [publicRedirect]);
 
   useEffect(() => {
-    if (status !== "authenticated") {
-      setWorkspaceStatus(null);
-      setWorkspaceError("");
-      setWorkspaceNetworkError(false);
-      return;
-    }
-    let cancelled = false;
-    setWorkspaceStatus(null);
-    setWorkspaceError("");
-    setWorkspaceNetworkError(false);
-    authApi.onboardingStatus()
-      .then((result) => {
-        if (!cancelled) {
-          setWorkspaceStatus(result);
-          setWorkspaceError("");
-          setWorkspaceNetworkError(false);
-        }
-      })
-      .catch((error: unknown) => {
-        if (!cancelled) {
-          setWorkspaceError(error instanceof Error ? error.message : "Workspace status could not be checked.");
-          setWorkspaceNetworkError(error instanceof TypeError);
-        }
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [status]);
-
-  useEffect(() => {
     const pathname = window.location.pathname.replace(/\/+$/, "") || "/";
     if (status !== "authenticated" && pathname === "/onboarding") {
       window.history.replaceState(window.history.state, "", "/login");
       lastKnownUrl.current = window.location.href;
       return;
     }
-    if (status !== "authenticated" || !workspaceStatus) return;
+    if (status !== "authenticated") return;
 
     const exemptPath = pathname === "/terms" || pathname === "/privacy"
       || pathname === "/faqs" || pathname === "/accept-invitation";
-    const authPath = ["/login", "/register", "/verify-email", "/forgot-password", "/reset-password", "/locked"]
+    const authPath = ["/login", "/register", "/verify-email", "/forgot-password", "/reset-password", "/locked", "/onboarding"]
       .includes(pathname);
-    const nextPath = !workspaceStatus.onboardingComplete && !exemptPath
-      ? "/onboarding"
-      : workspaceStatus.onboardingComplete && (pathname === "/onboarding" || authPath)
-        ? "/"
-        : null;
+    const nextPath = !exemptPath && authPath ? "/" : null;
     if (nextPath && pathname !== nextPath) {
       window.history.replaceState(window.history.state, "", nextPath);
       lastKnownUrl.current = window.location.href;
       setLocation(pageFromLocation());
     }
-  }, [status, workspaceStatus]);
+  }, [status]);
 
   useEffect(() => {
     function syncPath(event: PopStateEvent) {
@@ -318,20 +278,6 @@ export default function App() {
     setLocation({ page: "go-live", logId: null, goLiveSection: section });
   }
 
-  async function retryWorkspaceAccess() {
-    setWorkspaceError("");
-    setWorkspaceNetworkError(false);
-    try {
-      const result = await authApi.onboardingStatus();
-      setWorkspaceStatus(result);
-      setWorkspaceError("");
-      setWorkspaceNetworkError(false);
-    } catch (error: unknown) {
-      setWorkspaceError(error instanceof Error ? error.message : "Workspace status could not be checked.");
-      setWorkspaceNetworkError(error instanceof TypeError);
-    }
-  }
-
   function openLog(logId: string) {
     if (!confirmLeavingUnsavedForm()) return;
     const params = new URLSearchParams();
@@ -350,34 +296,10 @@ export default function App() {
     setLocation({ page: "logs", logId: null, ...(apiKeyId ? { apiKeyId } : {}) });
   }
 
-  async function completeOnboarding(): Promise<boolean> {
-    try {
-      const result = await authApi.onboardingStatus();
-      setWorkspaceStatus(result);
-      if (!result.onboardingComplete) {
-        setWorkspaceError("Your profile, organization, project, and environment setup is not complete yet.");
-        return false;
-      }
-    } catch (error) {
-      setWorkspaceError(error instanceof Error ? error.message : "Workspace status could not be checked.");
-      return false;
-    }
-    setWorkspaceError("");
-    if (`${window.location.pathname}${window.location.search}` !== "/") {
-      window.history.pushState(null, "", "/");
-    }
+  function finishInvitation(): Promise<boolean> {
+    pushHistoryUrl("/");
     setLocation({ page: "overview", logId: null });
-    return true;
-  }
-
-  async function resumeOnboarding(): Promise<void> {
-    try {
-      const result = await authApi.resumeOnboarding();
-      setWorkspaceStatus(result);
-      setWorkspaceError("");
-    } catch (error) {
-      setWorkspaceError(error instanceof Error ? error.message : "Onboarding could not be resumed.");
-    }
+    return Promise.resolve(true);
   }
 
   const renderPage = () => {
@@ -577,7 +499,7 @@ export default function App() {
   const invitationRoute = pathname === "/accept-invitation";
   if (invitationRoute) {
     return <DeveloperOnboardingPage
-      onComplete={completeOnboarding}
+      onComplete={finishInvitation}
       initialStep="invitation"
     />;
   }
@@ -599,30 +521,8 @@ export default function App() {
     />;
   }
 
-  if (!workspaceStatus) {
-    return workspaceError
-      ? <DeveloperDashboardAccessLoader
-        error={workspaceNetworkError ? "connection" : "workspace"}
-        onRetry={retryWorkspaceAccess}
-        onSignOut={() => { void logout(); }}
-      />
-      : <DeveloperDashboardAccessLoader />;
-  }
-
   if (!runtimeStatus) {
     return <div className="onboarding-loading" aria-live="polite">Checking platform availability…</div>;
-  }
-
-  if (!workspaceStatus.onboardingComplete) {
-    return (
-      <DeveloperOnboardingPage
-        onComplete={completeOnboarding}
-        setupRequired
-        gateError={workspaceError}
-        nextStep={workspaceStatus.nextStep}
-        onboardingStatus={workspaceStatus}
-      />
-    );
   }
 
   const feature = featureForPage(activePage);
@@ -641,7 +541,5 @@ export default function App() {
     activePage={activePage}
     onNavigate={navigate}
     features={runtimeStatus?.features ?? {}}
-    onboardingSkipped={workspaceStatus.skipped}
-    onResumeOnboarding={resumeOnboarding}
   >{renderPage()}</AppShell>;
 }

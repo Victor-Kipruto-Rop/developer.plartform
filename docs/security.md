@@ -9,6 +9,7 @@
 - Invitation tokens are stored only as SHA-256 hashes; the raw token is returned once, in the creation response, and must be handled like a password.
 - API-key secrets are stored as an HMAC using the credential key. The raw value is disclosed only in the issue response and must be treated like a password.
 - Never put bearer tokens, API-key secrets, passwords, private keys, or complete authorization headers in logs, audit metadata, URLs, source control, or client-side storage.
+- API-key scopes are allowlisted per implemented API capability. Scope definitions reserved for unfinished payments, provider integrations, reconciliation, risk, settlement, reporting, or job APIs are visible as unavailable and cannot be assigned. API-key data routes derive organization, project, and environment exclusively from the authenticated key; context responses omit credentials, secret material, configuration, and infrastructure details.
 
 ## Organization security settings
 
@@ -26,7 +27,13 @@ Enabling `mfaRequired` is rejected with `UNSUPPORTED_SECURITY_POLICY` until an M
 
 The security filter chain is stateless. Public registration, login, and invitation acceptance are reachable without a session; every other route requires a valid, unexpired, unrevoked session whose membership is active and whose organization is active. Method security restricts lifecycle, security-settings, membership, and invitation operations by role (`OWNER`, `ADMIN`, or member), and the services re-check the same rules against the database rather than trusting the filter alone.
 
-The authenticated organization is the only tenant source. Login may carry an `organizationId` to disambiguate a multi-organization account; it is treated as a selection among that account's own memberships, never as an authority. Ambiguous membership returns `ORGANIZATION_SELECTION_REQUIRED`, and an unknown selection returns the same `INVALID_CREDENTIALS` response as a wrong password so membership cannot be probed.
+The authenticated organization is the only tenant source. Login automatically
+uses the account's last-accessed active organization, falling back to an active
+membership if no saved selection is available. Login may carry an
+`organizationId` to select another of that account's own memberships; it is
+treated as a selection, never as an authority. An unknown selection returns the
+same `INVALID_CREDENTIALS` response as a wrong password so membership cannot be
+probed.
 
 ## Error and logging behavior
 

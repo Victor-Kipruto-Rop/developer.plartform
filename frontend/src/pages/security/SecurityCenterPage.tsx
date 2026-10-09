@@ -1,3 +1,5 @@
+import { ValidatedForm } from "../../components/forms/ValidatedForm";
+import { getUserMessage } from "../../lib/errors";
 import { useEffect, useMemo, useState, type FormEvent, type KeyboardEvent } from "react";
 import { Activity, AlertTriangle, BellRing, Check, ChevronLeft, ChevronRight, Clock3, Copy, Eye, EyeOff, Fingerprint, KeyRound, MailCheck, Monitor, RotateCw, Search, Settings2, Shield, ShieldAlert, ShieldCheck } from "lucide-react";
 import { PageHeader } from "../../components/ui/PageHeader";
@@ -96,7 +98,7 @@ function formatTime(value: string) {
 }
 
 function errorMessage(error: unknown) {
-  return error instanceof Error ? error.message : "The backend request failed.";
+  return getUserMessage(error, "The backend request failed.");
 }
 
 export function SecurityCenterPage({ title = "Security center" }: { title?: string } = {}) {
@@ -623,7 +625,7 @@ export function SecurityCenterPage({ title = "Security center" }: { title?: stri
         {organizationPolicyError && <p className="notification-alert" role="alert">{organizationPolicyError}</p>}
         {organizationPolicyNotice && <p className="security-feedback" role="status">{organizationPolicyNotice}</p>}
         {organizationSettings
-          ? <form className="security-account-grid" onSubmit={(event) => void saveOrganizationMfaPolicy(event)}>
+          ? <ValidatedForm className="security-account-grid" onSubmit={(event) => void saveOrganizationMfaPolicy(event)}>
           <label className="security-account-card">
             <input
               type="checkbox"
@@ -647,7 +649,7 @@ export function SecurityCenterPage({ title = "Security center" }: { title?: stri
               {organizationPolicyBusy ? "Saving…" : "Save enforcement"}
             </button>
           </div>
-          </form>
+          </ValidatedForm>
           : <p className="security-empty-state">{loading ? "Loading organization policy…" : "Organization security policy is unavailable. Refresh to try again."}</p>}
       </section>
       {organizationSettings && <section className="panel security-controls-panel" aria-labelledby="organization-policy-heading">
@@ -673,10 +675,10 @@ export function SecurityCenterPage({ title = "Security center" }: { title?: stri
           : mfaEnabled
             ? <div className="security-mfa-enabled">
               <div className="security-mfa-enabled-summary"><ShieldCheck size={17} /><div><strong>Authenticator active</strong><span>{organizationMfaRequired ? "MFA is required by your organization." : "A one-time code is required for account sign-in."}</span></div></div>
-              <form className="security-mfa-recovery-form" onSubmit={(event) => { event.preventDefault(); void regenerateRecoveryCodes(); }}>
+              <ValidatedForm className="security-mfa-recovery-form" onSubmit={(event) => { event.preventDefault(); void regenerateRecoveryCodes(); }}>
                 <label className="settings-field"><span>Regenerate recovery codes</span><input className="field-control" autoComplete="one-time-code" maxLength={32} value={recoveryCode} onChange={(event) => setRecoveryCode(event.target.value)} placeholder="Authenticator or unused recovery code" /></label>
                 <button className="button button--secondary" type="submit" disabled={recoveryBusy || !recoveryCode.trim()}>{recoveryBusy ? "Regenerating…" : "Regenerate codes"}</button>
-              </form>
+              </ValidatedForm>
               {!organizationMfaRequired && organizationMfaRequired !== null && <>
                 <label className="settings-field"><span>Current password</span><input className="field-control" type="password" autoComplete="current-password" value={mfaCurrentPassword} onChange={(event) => setMfaCurrentPassword(event.target.value)} /></label>
                 <label className="settings-field"><span>Authenticator or recovery code</span><input className="field-control" autoComplete="one-time-code" inputMode="text" maxLength={32} value={mfaDisableCode} onChange={(event) => setMfaDisableCode(event.target.value)} /></label>
@@ -692,10 +694,10 @@ export function SecurityCenterPage({ title = "Security center" }: { title?: stri
                 <p className="security-mfa-instructions"><strong>1. Add this account to your authenticator</strong><span>Copy the setup URI or enter the manual secret in your authenticator app.</span></p>
                 <label className="settings-field"><span>Authenticator setup URI</span><div className="security-mfa-copy-field"><textarea className="field-control" readOnly rows={2} value={mfaEnrolment.provisioningUri} /><button className="button button--secondary" type="button" onClick={() => void copyMfaSetup(mfaEnrolment.provisioningUri, "uri")}>{mfaCopied === "uri" ? <Check size={14} /> : <Copy size={14} />}{mfaCopied === "uri" ? "Copied" : "Copy URI"}</button></div></label>
                 <label className="settings-field"><span>Manual setup secret</span><div className="security-mfa-copy-field"><input className="field-control" readOnly value={mfaEnrolment.secret} /><button className="button button--secondary" type="button" onClick={() => void copyMfaSetup(mfaEnrolment.secret, "secret")}>{mfaCopied === "secret" ? <Check size={14} /> : <Copy size={14} />}{mfaCopied === "secret" ? "Copied" : "Copy secret"}</button></div></label>
-                <form className="security-mfa-confirm" onSubmit={(event) => { event.preventDefault(); void confirmMfa(); }}>
+                <ValidatedForm className="security-mfa-confirm" onSubmit={(event) => { event.preventDefault(); void confirmMfa(); }}>
                   <label className="settings-field"><span>2. Enter the 6-digit authenticator code</span><input className="field-control security-mfa-code" type="text" autoComplete="one-time-code" inputMode="numeric" pattern="[0-9]{6}" maxLength={6} required value={mfaCode} onChange={(event) => setMfaCode(event.target.value.replace(/\D/g, "").slice(0, 6))} /></label>
                   <button className="button button--primary" type="submit" disabled={mfaBusy || mfaCode.length !== 6}>{mfaBusy ? "Verifying code…" : "Verify and enable MFA"}</button>
-                </form>
+                </ValidatedForm>
               </div>
               : <div>
                 <p>{organizationMfaRequired ? "Organization policy requires MFA. Enroll an authenticator to secure sign-in." : "Add an authenticator app to protect sign-in."}</p>
@@ -744,12 +746,12 @@ export function SecurityCenterPage({ title = "Security center" }: { title?: stri
         <div className="panel-heading"><div><h2>Change password</h2><p>Confirm your current password and choose a new password that meets the backend policy.</p></div><KeyRound size={17} className="heading-icon" /></div>
         {passwordError && <p className="notification-alert" role="alert">{passwordError}</p>}
         {passwordNotice && <p className="security-feedback" role="status">{passwordNotice}</p>}
-        <form className="settings-groups" onSubmit={(event) => void updatePassword(event)}>
+        <ValidatedForm className="settings-groups" onSubmit={(event) => void updatePassword(event)}>
           <label className="settings-field"><span>Current password</span><span className="security-password-input"><input className="field-control" type={showCurrentPassword ? "text" : "password"} autoComplete="current-password" required maxLength={200} value={currentPassword} onChange={(event) => setCurrentPassword(event.target.value)} /><button type="button" aria-label={showCurrentPassword ? "Hide current password" : "Show current password"} aria-pressed={showCurrentPassword} onClick={() => setShowCurrentPassword((shown) => !shown)}>{showCurrentPassword ? <EyeOff size={16} aria-hidden="true" /> : <Eye size={16} aria-hidden="true" />}</button></span></label>
           <label className="settings-field"><span>New password</span><span className="security-password-input"><input className="field-control" type={showNewPassword ? "text" : "password"} autoComplete="new-password" required value={newPassword} onChange={(event) => setNewPassword(event.target.value)} /><button type="button" aria-label={showNewPassword ? "Hide new password" : "Show new password"} aria-pressed={showNewPassword} onClick={() => setShowNewPassword((shown) => !shown)}>{showNewPassword ? <EyeOff size={16} aria-hidden="true" /> : <Eye size={16} aria-hidden="true" />}</button></span></label>
           <label className="settings-field"><span>Confirm new password</span><span className="security-password-input"><input className="field-control" type={showConfirmPassword ? "text" : "password"} autoComplete="new-password" required value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} /><button type="button" aria-label={showConfirmPassword ? "Hide confirmation password" : "Show confirmation password"} aria-pressed={showConfirmPassword} onClick={() => setShowConfirmPassword((shown) => !shown)}>{showConfirmPassword ? <EyeOff size={16} aria-hidden="true" /> : <Eye size={16} aria-hidden="true" />}</button></span></label>
           <button className="button button--primary" type="submit" disabled={passwordBusy}>{passwordBusy ? "Updating…" : "Change password"}</button>
-        </form>
+        </ValidatedForm>
       </section>
       </div>}
 

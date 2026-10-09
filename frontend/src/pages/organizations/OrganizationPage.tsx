@@ -1,3 +1,4 @@
+import { getUserMessage } from "../../lib/errors";
 import { useEffect, useState } from "react";
 import { Building2, Check, Clock3, Download, LockKeyhole, RefreshCw, Users } from "lucide-react";
 import { PageHeader } from "../../components/ui/PageHeader";
@@ -65,7 +66,7 @@ function displayDate(value: string | null | undefined) {
 }
 
 function message(error: unknown) {
-  return error instanceof Error ? error.message : "The request failed.";
+  return getUserMessage(error, "The request failed.");
 }
 
 export function OrganizationPage({ initialTab = "Overview" }: { initialTab?: Tab } = {}) {

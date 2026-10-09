@@ -1,3 +1,5 @@
+import { ValidatedForm } from "../../components/forms/ValidatedForm";
+import { getUserMessage } from "../../lib/errors";
 import { Archive, FolderKanban, Plus, RotateCcw, Search, X } from "lucide-react";
 import { useEffect, useState, type FormEvent } from "react";
 import type { PageId } from "../../app/routes";
@@ -59,7 +61,7 @@ export function ProjectsPage({ onNavigate }: { onNavigate: (page: PageId) => voi
       })
       .catch((requestError: unknown) => {
         if (!controller.signal.aborted) {
-          setLoadError(requestError instanceof Error ? requestError.message : "Unable to load projects.");
+          setLoadError(getUserMessage(requestError, "Unable to load projects."));
         }
       })
       .finally(() => {
@@ -109,7 +111,7 @@ export function ProjectsPage({ onNavigate }: { onNavigate: (page: PageId) => voi
       clearProjectNameDraft();
       setCreateDialogOpen(false);
     } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : "Project creation failed.");
+      setError(getUserMessage(requestError, "Project creation failed."));
     } finally {
       setSaving(false);
     }
@@ -125,7 +127,7 @@ export function ProjectsPage({ onNavigate }: { onNavigate: (page: PageId) => voi
       setArchiveTarget(null);
       setReloadKey((current) => current + 1);
     } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : "Project could not be archived.");
+      setError(getUserMessage(requestError, "Project could not be archived."));
     } finally {
       setSaving(false);
     }
@@ -141,7 +143,7 @@ export function ProjectsPage({ onNavigate }: { onNavigate: (page: PageId) => voi
       setRestoreTarget(null);
       setReloadKey((current) => current + 1);
     } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : "Project could not be restored.");
+      setError(getUserMessage(requestError, "Project could not be restored."));
     } finally {
       setSaving(false);
     }
@@ -216,13 +218,13 @@ export function ProjectsPage({ onNavigate }: { onNavigate: (page: PageId) => voi
               </div>
               <button className="icon-button" type="button" aria-label="Close dialog" disabled={saving} onClick={() => setCreateDialogOpen(false)}><X size={17} /></button>
             </div>
-            <form className="workflow-form" onSubmit={createProject}>
+            <ValidatedForm className="workflow-form" onSubmit={createProject}>
               <label>Project name<input required minLength={2} maxLength={120} value={projectName} onChange={(event) => setProjectName(event.target.value)} placeholder="Payments integration" /></label>
               {projectNameDraftRestored && <p className="workflow-hint" role="status">Recovered your unfinished project name from this browser.</p>}
               <p className="workflow-hint">The project is created in the authenticated organization. External services are not provisioned.</p>
               {error && <p className="workflow-error" role="alert">{error}</p>}
               <div className="workflow-form-actions"><button className="button button--secondary" type="button" disabled={saving} onClick={() => setCreateDialogOpen(false)}>Cancel</button><button className="button button--primary" type="submit" disabled={saving || projectName.trim().length < 2}><Plus size={15} />{saving ? "Creating…" : "Create project"}</button></div>
-            </form>
+            </ValidatedForm>
           </section>
         </div>
       )}

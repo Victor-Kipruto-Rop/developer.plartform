@@ -1,3 +1,5 @@
+import { ValidatedForm } from "../../components/forms/ValidatedForm";
+import { getUserMessage } from "../../lib/errors";
 import { useEffect, useState, type FormEvent } from "react";
 import { AlertTriangle, KeyRound, ShieldCheck } from "lucide-react";
 import type { PageId } from "../../app/routes";
@@ -13,7 +15,7 @@ type Organization = {
 };
 
 function errorMessage(error: unknown) {
-  return error instanceof Error ? error.message : "The backend request failed.";
+  return getUserMessage(error, "The backend request failed.");
 }
 
 export function DangerZonePage({ onNavigate }: { onNavigate: (page: PageId) => void }) {
@@ -82,7 +84,7 @@ export function DangerZonePage({ onNavigate }: { onNavigate: (page: PageId) => v
                 <PolicyValue label="Backend status" value={organization.status} />
               </div>
               {isOwner
-                ? <form className="settings-groups" onSubmit={(event) => void deleteOrganization(event)}>
+                ? <ValidatedForm className="settings-groups" onSubmit={(event) => void deleteOrganization(event)}>
                   <p>Deleting this organization revokes its active sessions. This action is available to the organization owner and cannot be undone from this page. Type <strong>{organization.name}</strong> to confirm.</p>
                   <label className="settings-field"><span>Confirm organization name</span>
                     <input className="field-control" required autoComplete="off" value={confirmation} onChange={(event) => setConfirmation(event.target.value)} />
@@ -90,7 +92,7 @@ export function DangerZonePage({ onNavigate }: { onNavigate: (page: PageId) => v
                   <button className="button button--danger" type="submit" disabled={deleting || confirmation !== organization.name}>
                     {deleting ? "Deleting organization…" : "Delete organization"}
                   </button>
-                </form>
+                </ValidatedForm>
                 : <p className="security-empty-state">The backend restricts organization deletion to its owner. No deletion action is available for this account.</p>}
             </>
             : <p className="security-empty-state">{error ? "Organization state could not be loaded." : "No organization state was returned by the backend."}</p>}

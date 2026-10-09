@@ -11,6 +11,7 @@ import {
   ShieldCheck,
 } from "lucide-react";
 import { PageHeader } from "../../components/ui/PageHeader";
+import { getUserMessage } from "../../lib/errors";
 import { apiData } from "../../lib/api";
 
 type Scope = {
@@ -87,14 +88,14 @@ export function ApiCatalogPage() {
       setScopes(scopeResult.value);
       setScopeError("");
     } else {
-      setScopeError(scopeResult.reason instanceof Error ? scopeResult.reason.message : "Could not load API scopes.");
+      setScopeError(getUserMessage(scopeResult.reason, "Could not load API scopes."));
       setScopes([]);
     }
     if (eventResult.status === "fulfilled") {
       setEventTypes(eventResult.value);
       setEventError("");
     } else {
-      setEventError(eventResult.reason instanceof Error ? eventResult.reason.message : "Could not load event contracts.");
+      setEventError(getUserMessage(eventResult.reason, "Could not load event contracts."));
       setEventTypes([]);
     }
     setLoading(false);

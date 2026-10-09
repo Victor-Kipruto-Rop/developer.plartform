@@ -1,3 +1,4 @@
+import { getUserMessage } from "../../lib/errors";
 import {
   Activity,
   AlertTriangle,
@@ -85,7 +86,7 @@ function ageLabel(value: string) {
 }
 
 function unavailableMessage(error: unknown) {
-  return error instanceof Error ? error.message : "The endpoint could not be reached.";
+  return getUserMessage(error, "The endpoint could not be reached.");
 }
 
 export function DashboardMonitor({ onNavigate }: { onNavigate: (page: PageId) => void }) {

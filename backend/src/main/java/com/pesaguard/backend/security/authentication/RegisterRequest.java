@@ -11,7 +11,7 @@ public record RegisterRequest(
         @NotBlank @Email @Size(max = 320) String email,
         @NotBlank @Size(max = 128) String password,
         @JsonAlias("name") @NotBlank @Size(min = 2, max = 120) String displayName,
-        @Size(max = 120) String organizationName,
+        @NotBlank @Size(min = 2, max = 120) String organizationName,
         @Size(max = 500) String organizationDescription,
         @AssertTrue(message = "Terms must be accepted") boolean termsAccepted,
         String username,
