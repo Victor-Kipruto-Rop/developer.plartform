@@ -31,8 +31,8 @@ type ApiProject = { id: string; name: string };
 type ProjectList = { items: ApiProject[] };
 
 const sessionEndpoints: Endpoint[] = [
-  { id: "organization", label: "Current organization", path: "/api/v1/organization", description: "Read the organization associated with your signed-in session." },
-  { id: "projects", label: "Projects", path: "/api/v1/projects?page=0&size=20", description: "List projects available to your current organization." },
+  { id: "organization", label: "Personal workspace", path: "/api/v1/organization", description: "Read the personal workspace associated with your signed-in session." },
+  { id: "projects", label: "Projects", path: "/api/v1/projects?page=0&size=20", description: "List projects available to your personal workspace." },
   { id: "members", label: "Organization members", path: "/api/v1/organization/members", description: "Read persisted member and invitation status records." },
   { id: "sessions", label: "Active sessions", path: "/api/v1/auth/sessions", description: "List sessions owned by your signed-in account." },
   { id: "audit", label: "Audit events", path: "/api/v1/audit-events?page=0&size=20", description: "Read the latest organization-scoped audit records." },
@@ -326,7 +326,7 @@ export function ApiExplorerPage() {
                 <small>API-key requests go directly to this environment host so the key is validated against its bound environment.</small>
               </div>}
               {productionKeyBlocked
-                ? <div className="api-live-production-key-notice" role="status"><ShieldCheck size={16} /><span><strong>Production keys stay server-side.</strong> Do not paste production credentials into a browser. Use the generated backend integration snippet with this production Base URL.</span></div>
+                ? <div className="api-live-production-key-notice" role="status"><ShieldCheck size={16} /><span><strong>Production keys stay server-side.</strong> Do not paste production credentials into a browser. Use the generated integration snippet with this production Base URL.</span></div>
                 : <div className="api-live-label">
                   <label htmlFor="api-live-api-key">API key</label>
                   <span className="api-live-secret-field">

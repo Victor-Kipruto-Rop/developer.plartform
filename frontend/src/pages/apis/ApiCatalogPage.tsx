@@ -138,7 +138,7 @@ export function ApiCatalogPage() {
       <PageHeader
         eyebrow="BUILD · REFERENCE"
         title="API catalog"
-        description="Explore the live scope registry and event contracts. Availability and lifecycle labels are sourced from the backend."
+        description="Explore the live scope registry and event contracts. Availability and lifecycle labels are sourced from the system."
         action={<button className="button button--secondary" type="button" disabled={loading} onClick={() => void loadCatalog()}><RefreshCw size={14} className={loading ? "usage-refresh-icon" : ""} />{loading ? "Refreshing…" : "Refresh catalog"}</button>}
       />
 
@@ -152,7 +152,7 @@ export function ApiCatalogPage() {
           </div>
         </div>
         <div className="api-catalog-summary">
-          <div><span>Registry scopes</span><strong>{scopeError ? "—" : scopes.length}</strong><small>{scopeError ? "Unavailable" : "Backend-defined"}</small></div>
+          <div><span>Registry scopes</span><strong>{scopeError ? "—" : scopes.length}</strong><small>{scopeError ? "Unavailable" : "System-defined"}</small></div>
           <div><span>Assignable</span><strong>{scopeError ? "—" : assignableCount}</strong><small>Current API-key options</small></div>
           <div><span>Event contracts</span><strong>{eventError ? "—" : eventTypes.length}</strong><small>{eventError ? "Unavailable" : `${activeEvents} active`}</small></div>
         </div>
@@ -220,14 +220,14 @@ export function ApiCatalogPage() {
               <span className="api-catalog-collection__foot">{activeEvents} active <ArrowRight size={14} /></span>
             </button>
           </div>
-          <div className="api-catalog-note"><CircleAlert size={16} /><p><strong>Availability is explicit.</strong> Scopes marked unavailable or deprecated should not be used to infer support that the backend has not confirmed.</p></div>
+          <div className="api-catalog-note"><CircleAlert size={16} /><p><strong>Availability is explicit.</strong> Scopes marked unavailable or deprecated should not be used to infer support that the system has not confirmed.</p></div>
         </section>
       )}
 
       {activeTab === "scopes" && (
         <section className="api-catalog-panel" id="api-catalog-panel-scopes" role="tabpanel" aria-labelledby="api-catalog-tab-scopes">
           <div className="api-catalog-panel-heading">
-            <div><span className="api-catalog-kicker">Authorization</span><h2>API-key scope registry</h2><p>Each scope is a backend-defined permission with explicit assignment and lifecycle metadata.</p></div>
+            <div><span className="api-catalog-kicker">Authorization</span><h2>API-key scope registry</h2><p>Each scope is a system-defined permission with explicit assignment and lifecycle metadata.</p></div>
             <span className="api-catalog-result-count">{visibleScopes.length} of {scopeError ? "—" : scopes.length}</span>
           </div>
           <div className="api-catalog-filters" aria-label="Scope availability filters">
@@ -239,7 +239,7 @@ export function ApiCatalogPage() {
             ] as const).map(([id, label]) => <button type="button" key={id} className={scopeFilter === id ? "is-active" : ""}
               aria-pressed={scopeFilter === id} onClick={() => setScopeFilter(id)}>{label}</button>)}
           </div>
-          {loading && scopes.length === 0 ? <p className="security-empty-state">Loading the backend scope registry…</p>
+          {loading && scopes.length === 0 ? <p className="security-empty-state">Loading the system scope registry…</p>
             : visibleScopes.length === 0 ? <p className="security-empty-state">{scopeError ? "Scope data is unavailable." : "No scopes match these filters."}</p>
               : <div className="api-catalog-scope-list">{visibleScopes.map((scope) => (
                 <article className="api-catalog-scope-card" key={scope.name}>

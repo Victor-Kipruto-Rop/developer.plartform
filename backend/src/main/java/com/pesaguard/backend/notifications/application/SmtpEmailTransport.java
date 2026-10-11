@@ -1,29 +1,19 @@
 package com.pesaguard.backend.notifications.application;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.mail.MailException;
-import org.springframework.mail.SimpleMailMessage;
-import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.stereotype.Component;
 
+import com.pesaguard.backend.member.application.AccountEmailDeliveryService;
 import com.pesaguard.backend.notifications.domain.Notification;
 import com.pesaguard.backend.notifications.domain.NotificationChannel;
 
-/** Delivers plain-text notification email through the configured SMTP relay. */
+/** Delivers branded notification email through the configured SMTP relay. */
 @Component
 public class SmtpEmailTransport implements NotificationTransport {
 
-    private static final Logger log = LoggerFactory.getLogger(SmtpEmailTransport.class);
+    private final AccountEmailDeliveryService emailDelivery;
 
-    private final JavaMailSender mailSender;
-    private final String fromAddress;
-
-    public SmtpEmailTransport(JavaMailSender mailSender,
-            @Value("${pesaguard.identity.from-email}") String fromAddress) {
-        this.mailSender = mailSender;
-        this.fromAddress = fromAddress;
+    public SmtpEmailTransport(AccountEmailDeliveryService emailDelivery) {
+        this.emailDelivery = emailDelivery;
     }
 
     @Override
@@ -40,20 +30,9 @@ public class SmtpEmailTransport implements NotificationTransport {
             return DeliveryAttemptResult.permanentFailure("invalid subject");
         }
 
-        SimpleMailMessage message = new SimpleMailMessage();
-        message.setFrom(fromAddress);
-        message.setTo(recipient.trim());
-        message.setSubject(notification.subject());
-        message.setText(notification.body());
-        try {
-            mailSender.send(message);
-            return DeliveryAttemptResult.delivered();
-        } catch (MailException failure) {
-            // Keep addresses, subjects, bodies and provider response text out of logs.
-            log.warn("notification email delivery failed type={} notificationId={} cause={}",
-                    notification.type(), notification.id(), failure.getClass().getSimpleName());
-            return DeliveryAttemptResult.transientFailure("email delivery failed");
-        }
+        return emailDelivery.sendNotification(recipient.trim(), notification.subject(), notification.body())
+                ? DeliveryAttemptResult.delivered()
+                : DeliveryAttemptResult.transientFailure("email delivery failed");
     }
 
     private static boolean validAddress(String address) {

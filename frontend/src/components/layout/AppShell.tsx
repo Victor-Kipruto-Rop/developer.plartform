@@ -12,7 +12,6 @@ import {
   FileText,
   FolderKanban,
   KeyRound,
-  Lightbulb,
   LogOut,
   Moon,
   ExternalLink,
@@ -23,17 +22,13 @@ import {
   Network,
   PanelLeftClose,
   PanelLeftOpen,
-  Plug,
   RotateCw,
   Search,
   Sparkles,
-  Settings2,
   ShieldCheck,
   UserRound,
-  Users,
   X,
   Webhook,
-  Wrench,
   type LucideIcon,
 } from "lucide-react";
 import {
@@ -44,8 +39,6 @@ import {
   type PageId,
 } from "../../app/routes";
 import { useAuth } from "../../context/AuthContext";
-import * as authApi from "../../lib/authApi";
-import type { WorkspaceSummary } from "../../types/auth";
 import { apiData, refreshSession } from "../../lib/api";
 import { isFeatureEnabled, featureForPage } from "../../lib/runtimeFeatures";
 import { useToast } from "../ui/ToastProvider";
@@ -57,8 +50,14 @@ import {
   setActiveProject,
 } from "../../lib/activeEnvironment";
 
-type NotificationInbox = { items: unknown[]; unreadCount: number };
-type FeedbackNotificationCount = { totalItems: number };
+type NotificationItem = {
+  id: string;
+  subject: string;
+  body: string;
+  category: string;
+  createdAt: string;
+};
+type NotificationInbox = { items: NotificationItem[]; unreadCount: number };
 type HeaderProject = { id: string; name: string };
 type HeaderEnvironment = { id: string; projectId: string; name: string; type: string; status: string; baseUrl: string };
 type HeaderProjectList = { items: HeaderProject[] };
@@ -155,16 +154,14 @@ const shortcutPages: Record<string, PageId> = {
   p: "projects",
   a: "api-catalog",
   w: "webhooks",
-  s: "security-center",
   l: "logs",
 };
 
 const commandEntries: CommandEntry[] = [
   { id: "create-project", label: "Create project", detail: "Start a new project from a template.", keywords: ["new", "project", "template"], group: "Commands", icon: FolderKanban, action: { kind: "navigate", page: "projects", intent: "create-project" } },
-  { id: "create-api-key", label: "Create API key", detail: "Open the backend-connected API credential manager.", keywords: ["new", "credential", "token", "api key"], group: "Commands", icon: KeyRound, action: { kind: "navigate", page: "api-keys" } },
-  { id: "create-webhook", label: "Create webhook", detail: "Open backend-connected webhook management.", keywords: ["new", "endpoint", "events", "webhook"], group: "Commands", icon: Webhook, action: { kind: "navigate", page: "webhooks" } },
+  { id: "create-api-key", label: "Create API key", detail: "Open the connected API credential manager.", keywords: ["new", "credential", "token", "api key"], group: "Commands", icon: KeyRound, action: { kind: "navigate", page: "api-keys" } },
+  { id: "create-webhook", label: "Create webhook", detail: "Open connected webhook management.", keywords: ["new", "endpoint", "events", "webhook"], group: "Commands", icon: Webhook, action: { kind: "navigate", page: "webhooks" } },
   { id: "open-api-explorer", label: "Open API Explorer", detail: "Browse endpoint request examples.", keywords: ["api", "endpoints", "explorer", "request"], group: "Commands", icon: Network, action: { kind: "navigate", page: "api-explorer" } },
-  { id: "open-developer-tools", label: "Open developer tools", detail: "Open local request, webhook, token, and code utilities.", keywords: ["developer tools", "json", "jwt", "request generator", "sdk"], group: "Commands", icon: Wrench, action: { kind: "navigate", page: "developer-tools" } },
   { id: "view-api-logs", label: "View API logs", detail: "Search request, response, auth, event, webhook, and audit logs.", keywords: ["logs", "requests", "usage", "analytics", "activity"], group: "Commands", icon: Activity, action: { kind: "navigate", page: "logs" } },
   { id: "rotate-credential", label: "Rotate credential", detail: "Open credentials to rotate an existing API key.", keywords: ["api key", "rotate", "secret", "credential"], group: "Commands", icon: RotateCw, action: { kind: "navigate", page: "api-keys" } },
   { id: "open-golive", label: "Open Go-Live", detail: "Verify Production readiness and launch an integration.", keywords: ["production", "go-live", "readiness", "launch", "deploy"], group: "Commands", icon: ShieldCheck, action: { kind: "navigate", page: "go-live" } },
@@ -173,26 +170,21 @@ const commandEntries: CommandEntry[] = [
   { id: "search-dashboard", label: "Dashboard", detail: "Open the workspace command overview.", keywords: ["home", "overview", "dashboard"], group: "Pages", icon: LayoutDashboard, action: { kind: "navigate", page: "overview" } },
   { id: "search-apis", label: "APIs", detail: "Browse API products and versions.", keywords: ["api", "products", "catalog"], group: "Pages", icon: Network, action: { kind: "navigate", page: "api-catalog" } },
   { id: "search-api-lifecycle", label: "API lifecycle", detail: "Follow an integration from discovery to production operations.", keywords: ["api lifecycle", "integration", "onboarding", "production", "deploy"], group: "Pages", icon: Activity, action: { kind: "navigate", page: "api-lifecycle" } },
-  { id: "search-developer-tools", label: "Developer tools", detail: "Open the developer utility hub.", keywords: ["tools", "json", "jwt", "signature", "generator"], group: "Pages", icon: Wrench, action: { kind: "navigate", page: "developer-tools" } },
   { id: "search-projects", label: "Projects", detail: "Search and manage projects.", keywords: ["project", "workspace"], group: "Pages", icon: FolderKanban, action: { kind: "navigate", page: "projects" } },
   { id: "search-environments", label: "Environments", detail: "Browse project environments.", keywords: ["environment", "sandbox", "staging", "production"], group: "Pages", icon: Globe, action: { kind: "navigate", page: "environments" } },
   { id: "search-api-keys", label: "API keys", detail: "Open credentials.", keywords: ["api key", "keys", "credential", "secret"], group: "Pages", icon: KeyRound, action: { kind: "navigate", page: "api-keys" } },
   { id: "search-oauth", label: "OAuth applications", detail: "Browse OAuth applications.", keywords: ["oauth", "applications", "clients"], group: "Pages", icon: KeyRound, action: { kind: "navigate", page: "oauth-applications" } },
   { id: "search-webhooks", label: "Webhooks", detail: "Browse webhook setup and delivery guidance.", keywords: ["webhook", "delivery", "events"], group: "Pages", icon: Webhook, action: { kind: "navigate", page: "webhooks" } },
   { id: "search-events", label: "Event platform", detail: "Browse event schemas, versions, subscriptions, delivery, and lineage.", keywords: ["event", "catalog", "schema", "version", "explorer", "replay", "subscription", "delivery", "lineage", "activity", "stream"], group: "Pages", icon: Activity, action: { kind: "navigate", page: "events" } },
-  { id: "search-users", label: "Users", detail: "Open organization members and invitations.", keywords: ["user", "member", "team", "invite"], group: "Pages", icon: Users, action: { kind: "navigate", page: "organization-members" } },
-  { id: "search-security", label: "Security", detail: "Open security center and events.", keywords: ["security", "sessions", "risk"], group: "Pages", icon: ShieldCheck, action: { kind: "navigate", page: "security-center" } },
   { id: "search-logs", label: "Logs", detail: "Search request logs and inspect individual log details.", keywords: ["logs", "requests", "usage", "analytics", "audit"], group: "Pages", icon: FileText, action: { kind: "navigate", page: "logs" } },
   { id: "search-debugging", label: "Request debugging", detail: "Inspect request traces, spans, dependencies, and errors.", keywords: ["debug", "debugging", "trace", "tracing", "request id", "correlation", "span"], group: "Pages", icon: Activity, action: { kind: "navigate", page: "debugging" } },
   { id: "search-audit", label: "Audit logs", detail: "Open organization audit records.", keywords: ["audit", "logs", "security", "history"], group: "Pages", icon: FileText, action: { kind: "navigate", page: "audit-logs" } },
-  { id: "search-settings", label: "Settings", detail: "Open the combined settings management hub.", keywords: ["settings", "account", "preferences", "security", "workspace", "organization", "project", "environment"], group: "Pages", icon: Settings2, action: { kind: "navigate", page: "settings" } },
-  { id: "search-suggestions", label: "Suggestions", detail: "Share a product idea, report a problem, or follow your feedback.", keywords: ["suggestions", "feedback", "feature request", "bug report", "idea"], group: "Pages", icon: Lightbulb, action: { kind: "navigate", page: "suggestions" } },
   { id: "search-docs", label: "Documentation", detail: "Open the API reference and developer guides.", keywords: ["docs", "help", "guides", "reference"], group: "Help", icon: BookOpenText, action: { kind: "external", href: externalLinks.docs } },
   { id: "open-support-hub", label: "Open support", detail: "Find documentation, developer support, status, tickets, and community links.", keywords: ["support", "help center", "tickets", "incidents", "community", "announcements"], group: "Help", icon: LifeBuoy, action: { kind: "navigate", page: "support-hub" } },
 ];
 
 export function AppShell({ activePage, onNavigate, features, children }: AppShellProps) {
-  const { status, user, organization, switchWorkspace, hasPermission, permissionsLoaded, logout, welcomePending, consumeWelcome } = useAuth();
+  const { status, user, organization, hasPermission, permissionsLoaded, logout, welcomePending, consumeWelcome } = useAuth();
   const { showToast } = useToast();
   const connected = status === "authenticated";
   const profileName = user?.displayName || user?.email || "Developer";
@@ -206,10 +198,6 @@ export function AppShell({ activePage, onNavigate, features, children }: AppShel
   const sessionActivityStorageKey = `pesaguard.last-activity.${user?.id ?? "guest"}`;
   const previousSessionActivityStorageKeyRef = useRef(sessionActivityStorageKey);
   const sidebarStorageKey = `pesaguard.sidebar-collapsed.${user?.id ?? "guest"}`;
-  const organizationName = organization?.name || (connected ? "Organization unavailable" : "Sign in to load organization");
-  const [workspaces, setWorkspaces] = useState<WorkspaceSummary[]>([]);
-  const [switchingWorkspace, setSwitchingWorkspace] = useState(false);
-  const [workspaceError, setWorkspaceError] = useState<string | null>(null);
   const activeNavigationLabel = navigationItems.find((item) => item.target.kind === "page" && item.target.page === activePage)?.label
     ?? activePage.replace(/-/g, " ");
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -344,35 +332,6 @@ export function AppShell({ activePage, onNavigate, features, children }: AppShel
   }, []);
 
 
-  useEffect(() => {
-    if (!connected) {
-      setWorkspaces([]);
-      return;
-    }
-    let cancelled = false;
-    authApi.listWorkspaces().then((items) => {
-      if (!cancelled) {
-        setWorkspaces(items);
-        setWorkspaceError(null);
-      }
-    }).catch(() => {
-      if (!cancelled) setWorkspaceError("Workspaces could not be loaded.");
-    });
-    return () => { cancelled = true; };
-  }, [connected, organization?.id]);
-
-  async function handleWorkspaceSwitch(workspaceId: string) {
-    if (!workspaceId || workspaceId === organization?.id || switchingWorkspace) return;
-    setSwitchingWorkspace(true);
-    setWorkspaceError(null);
-    try {
-      await switchWorkspace(workspaceId);
-    } catch (error) {
-      setWorkspaceError(getUserMessage(error, "Workspace switch failed."));
-    } finally {
-      setSwitchingWorkspace(false);
-    }
-  }
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [shortcutHelpOpen, setShortcutHelpOpen] = useState(false);
   const [query, setQuery] = useState("");
@@ -381,7 +340,9 @@ export function AppShell({ activePage, onNavigate, features, children }: AppShel
   const [shortcutHint, setShortcutHint] = useState("");
   const [noticeOpen, setNoticeOpen] = useState(false);
   const [notificationUnreadCount, setNotificationUnreadCount] = useState<number | null>(null);
-  const [feedbackUnreadCount, setFeedbackUnreadCount] = useState<number | null>(null);
+  const [notificationItems, setNotificationItems] = useState<NotificationItem[]>([]);
+  const [selectedNotification, setSelectedNotification] = useState<NotificationItem | null>(null);
+  const [notificationBusy, setNotificationBusy] = useState(false);
   const [notificationError, setNotificationError] = useState("");
   const [navigationDrawer, setNavigationDrawer] = useState<NavigationDrawer | null>(null);
   const [pageUsage, setPageUsage] = useState<PageUsage[]>([]);
@@ -602,7 +563,8 @@ export function AppShell({ activePage, onNavigate, features, children }: AppShel
   useEffect(() => {
     if (!connected) {
       setNotificationUnreadCount(null);
-      setFeedbackUnreadCount(null);
+      setNotificationItems([]);
+      setSelectedNotification(null);
       setNotificationError("");
       return;
     }
@@ -611,12 +573,16 @@ export function AppShell({ activePage, onNavigate, features, children }: AppShel
     const loadNotifications = () => {
       if (!active || loading || document.visibilityState === "hidden") return;
       loading = true;
-      void apiData<NotificationInbox>("/api/v1/notifications")
+      void apiData<NotificationInbox>("/api/v1/notifications?unreadOnly=true&page=0&size=100")
         .then((inbox) => {
-          if (!Array.isArray(inbox.items) || typeof inbox.unreadCount !== "number") {
+          if (!Array.isArray(inbox.items) || typeof inbox.unreadCount !== "number"
+            || inbox.items.some((item) => typeof item.id !== "string"
+              || typeof item.subject !== "string" || typeof item.body !== "string"
+              || typeof item.category !== "string" || typeof item.createdAt !== "string")) {
             throw new Error("The notifications API returned an invalid inbox response.");
           }
           if (active) {
+            setNotificationItems(inbox.items);
             setNotificationUnreadCount(inbox.unreadCount);
             setNotificationError("");
           }
@@ -624,18 +590,11 @@ export function AppShell({ activePage, onNavigate, features, children }: AppShel
         .catch((error: unknown) => {
           if (active) {
             setNotificationUnreadCount(null);
-            setFeedbackUnreadCount(null);
+            setNotificationItems([]);
             setNotificationError(getUserMessage(error, "Could not load notifications."));
           }
         })
         .finally(() => { loading = false; });
-      void apiData<FeedbackNotificationCount>("/api/v1/notifications?category=FEEDBACK&unreadOnly=true&page=0&size=1")
-        .then((feedbackInbox) => {
-          if (active) setFeedbackUnreadCount(typeof feedbackInbox.totalItems === "number" ? feedbackInbox.totalItems : null);
-        })
-        .catch(() => {
-          if (active) setFeedbackUnreadCount(null);
-        });
     };
     const refreshWhenVisible = () => {
       if (document.visibilityState === "visible") loadNotifications();
@@ -652,6 +611,46 @@ export function AppShell({ activePage, onNavigate, features, children }: AppShel
       window.removeEventListener("pesaguard:notifications-updated", refreshAfterInboxChange);
     };
   }, [connected]);
+
+  useEffect(() => {
+    if (!noticeOpen) return;
+    function closePopover(event: MouseEvent | KeyboardEvent) {
+      if (event instanceof KeyboardEvent && event.key === "Escape") {
+        setNoticeOpen(false);
+        setSelectedNotification(null);
+      } else if (event instanceof MouseEvent
+        && event.target instanceof Node
+        && !document.querySelector(".notice-wrap")?.contains(event.target)) {
+        setNoticeOpen(false);
+        setSelectedNotification(null);
+      }
+    }
+    document.addEventListener("mousedown", closePopover);
+    document.addEventListener("keydown", closePopover);
+    return () => {
+      document.removeEventListener("mousedown", closePopover);
+      document.removeEventListener("keydown", closePopover);
+    };
+  }, [noticeOpen]);
+
+  async function markNotificationRead(item: NotificationItem) {
+    if (notificationBusy) return;
+    setNotificationBusy(true);
+    setNotificationError("");
+    try {
+      await apiData<NotificationItem>(`/api/v1/notifications/${encodeURIComponent(item.id)}/read`, {
+        method: "POST",
+      });
+      setNotificationItems((current) => current.filter((currentItem) => currentItem.id !== item.id));
+      setNotificationUnreadCount((count) => count === null ? null : Math.max(0, count - 1));
+      setSelectedNotification(null);
+      window.dispatchEvent(new Event("pesaguard:notifications-updated"));
+    } catch (error) {
+      setNotificationError(getUserMessage(error, "The notification could not be removed."));
+    } finally {
+      setNotificationBusy(false);
+    }
+  }
 
   useEffect(() => {
     if (navigationDrawer !== "changelog") return;
@@ -886,11 +885,6 @@ export function AppShell({ activePage, onNavigate, features, children }: AppShel
     setSidebarOpen(false);
   }
 
-  function navigateFromDrawer(page: PageId) {
-    setNavigationDrawer(null);
-    navigate(page);
-  }
-
   function runCommand(entry: CommandEntry) {
     if (entry.action.kind === "external") {
       window.open(entry.action.href, "_blank", "noopener,noreferrer");
@@ -971,29 +965,18 @@ export function AppShell({ activePage, onNavigate, features, children }: AppShel
         </div>
 
         <div className="workspace-switcher-wrap">
-          <div className="workspace-switcher" aria-label="Current organization" title={sidebarCollapsed ? organizationName : undefined}>
-            <span className="workspace-avatar">{organizationName.slice(0, 1).toUpperCase()}</span>
+          <div className="workspace-switcher" aria-label="Personal account" title={sidebarCollapsed ? profileName : undefined}>
+            <span className="workspace-avatar">{profileName.slice(0, 1).toUpperCase()}</span>
             <span className="workspace-copy">
-              <span className="workspace-label">Organization</span>
-              <strong>{organizationName}</strong>
+              <span className="workspace-label">Personal account</span>
+              <strong>{profileName}</strong>
             </span>
-            {workspaces.length > 1 && <select
-              aria-label="Switch organization"
-              value={organization?.id ?? ""}
-              disabled={switchingWorkspace}
-              onChange={(event) => void handleWorkspaceSwitch(event.target.value)}
-            >
-              {workspaces.map((workspace) => <option key={workspace.id} value={workspace.id} disabled={workspace.status !== "ACTIVE"}>
-                {workspace.name} ({workspace.role.toLowerCase()})
-              </option>)}
-            </select>}
           </div>
-          {workspaceError && <p className="workspace-switch-error" role="alert">{workspaceError}</p>}
         </div>
 
         <nav className="side-nav" ref={sideNavRef} aria-label="Main navigation">
           {navigationIndicator && <span className="side-nav-active-indicator" style={navigationIndicator} aria-hidden="true" />}
-          {(["Overview", "Build", "Monitor", "Management", "Resources"] as const).map((group) => (
+          {(["Overview", "Build", "Monitor", "Resources"] as const).map((group) => (
             <section className="nav-section" key={group} aria-label={group}>
               <p className="nav-section-title">{group}</p>
               {navigationItems
@@ -1002,15 +985,13 @@ export function AppShell({ activePage, onNavigate, features, children }: AppShel
                 .filter((item) => {
                   if (!connected || !permissionsLoaded || item.target.kind !== "page") return true;
                   const page = item.target.page;
-                  const required = page === "organizations" ? "organization:read"
-                    : page === "projects" ? "project:read"
+                  const required = page === "projects" ? "project:read"
                       : page === "environments" ? "environment:read"
                         : page === "api-keys" ? "credential:read"
                           : page === "webhooks" ? "webhook:read"
                             : page === "usage" ? "usage:read"
                               : page === "activity" ? "audit:read"
-                                : page === "security-center" ? "security:read"
-                                  : page === "organization-members" ? "organization:read" : null;
+                                : page === "security-center" ? "security:read" : null;
                   if (!required) return true;
                   if (page === "api-keys") return hasPermission(required) || hasPermission("credential:create");
                   if (page === "webhooks") return hasPermission(required) || hasPermission("webhook:create");
@@ -1036,7 +1017,6 @@ export function AppShell({ activePage, onNavigate, features, children }: AppShel
                     >
                       <Icon size={17} strokeWidth={1.8} aria-hidden="true" />
                       <span>{label}</span>
-                      {id === "suggestions" && feedbackUnreadCount !== null && feedbackUnreadCount > 0 && <span className="suggestions-nav-badge" aria-label={`${feedbackUnreadCount} unread feedback updates`}>{feedbackUnreadCount > 99 ? "99+" : feedbackUnreadCount}</span>}
                     </button>
                   );
                 })}
@@ -1126,17 +1106,65 @@ export function AppShell({ activePage, onNavigate, features, children }: AppShel
                 className="icon-button notification-button"
                 aria-expanded={noticeOpen}
                 aria-label={notificationUnreadCount ? `Notifications, ${notificationUnreadCount} unread` : "Notifications"}
-                onClick={() => setNoticeOpen((open) => !open)}
+                onClick={() => {
+                  setSelectedNotification(null);
+                  setNoticeOpen((open) => !open);
+                }}
               >
                 <Bell size={17} />
-                {notificationUnreadCount !== null && notificationUnreadCount > 0 && <span className="notification-indicator" />}
+                {notificationUnreadCount !== null && notificationUnreadCount > 0 && (
+                  <span className="notification-count-badge" aria-hidden="true">
+                    {notificationUnreadCount > 99 ? "99+" : notificationUnreadCount}
+                  </span>
+                )}
               </button>
               {noticeOpen && (
-                <div className="notification-popover">
-                  <strong>Notification inbox</strong>
-                  <p>{!connected ? "Sign in to load account notifications." : notificationError ? `Notifications unavailable: ${notificationError}` : notificationUnreadCount === null ? "Loading notifications…" : notificationUnreadCount ? `${notificationUnreadCount} unread notification${notificationUnreadCount === 1 ? "" : "s"}.` : "No unread notifications."}</p>
-                  <button className="text-button" type="button" onClick={() => navigate("notifications")}>Open inbox<ArrowRight size={13} /></button>
-                  <span>{connected ? "Inbox status from the notifications API" : "Account-scoped notification inbox"}</span>
+                <div className="notification-popover" role="dialog" aria-label="Notifications">
+                  <div className="notification-popover-heading">
+                    <div><strong>Notifications</strong><span>{notificationUnreadCount ?? 0} unread</span></div>
+                    <button className="icon-button" type="button" aria-label="Close notifications" onClick={() => setNoticeOpen(false)}><X size={15} /></button>
+                  </div>
+                  {notificationError && <p className="notification-popover-error" role="alert">{notificationError}</p>}
+                  {selectedNotification ? (
+                    <article className="notification-popover-detail">
+                      <button className="notification-popover-back" type="button" onClick={() => setSelectedNotification(null)}>← All notifications</button>
+                      <span className="notification-popover-category">{selectedNotification.category.replaceAll("_", " ")}</span>
+                      <strong>{selectedNotification.subject}</strong>
+                      <time dateTime={selectedNotification.createdAt}>{new Date(selectedNotification.createdAt).toLocaleString()}</time>
+                      <p>{selectedNotification.body}</p>
+                      <button
+                        className="button button--primary"
+                        type="button"
+                        disabled={notificationBusy}
+                        onClick={() => void markNotificationRead(selectedNotification)}
+                      >
+                        {notificationBusy ? "Removing…" : "Mark as read"}
+                      </button>
+                    </article>
+                  ) : !connected ? (
+                    <p className="notification-popover-empty">Sign in to load account notifications.</p>
+                  ) : notificationUnreadCount === null ? (
+                    <p className="notification-popover-empty">Loading notifications…</p>
+                  ) : notificationItems.length === 0 ? (
+                    <p className="notification-popover-empty">You’re all caught up.</p>
+                  ) : (
+                    <div className="notification-popover-list">
+                      {notificationItems.map((item) => (
+                        <button
+                          className="notification-popover-item"
+                          key={item.id}
+                          type="button"
+                          onClick={() => setSelectedNotification(item)}
+                        >
+                          <span className="notification-popover-item-dot" aria-hidden="true" />
+                          <span><strong>{item.subject}</strong><small>{item.body}</small><time dateTime={item.createdAt}>{new Date(item.createdAt).toLocaleString()}</time></span>
+                        </button>
+                      ))}
+                      {notificationUnreadCount > notificationItems.length && (
+                        <p className="notification-popover-more">Showing the newest {notificationItems.length} unread notifications.</p>
+                      )}
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -1214,7 +1242,7 @@ export function AppShell({ activePage, onNavigate, features, children }: AppShel
         </div>
       )}
 
-      {navigationDrawer && (
+      {navigationDrawer === "changelog" && (
         <div className="navigation-drawer-backdrop" onMouseDown={(event) => {
           if (event.target === event.currentTarget) setNavigationDrawer(null);
         }}>
@@ -1223,32 +1251,15 @@ export function AppShell({ activePage, onNavigate, features, children }: AppShel
               <div>
                 <span className="section-eyebrow">DEVELOPER WORKSPACE</span>
                 <h2 id="navigation-drawer-title">
-                  {navigationDrawer === "integrations" ? "Integrations"
-                    : "Changelog"}
+                  Changelog
                 </h2>
                 <p>
-                  {navigationDrawer === "integrations" ? "Open connected app and service configuration."
-                    : "Published product changes from the PesaGuard platform."}
+                  Published product changes from the PesaGuard platform.
                 </p>
               </div>
               <button className="icon-button" type="button" aria-label="Close navigation drawer" onClick={() => setNavigationDrawer(null)}><X size={17} /></button>
             </div>
-            {navigationDrawer === "integrations" ? (
-              <>
-                <div className="navigation-drawer-links">
-                  <button type="button" onClick={() => navigateFromDrawer("api-explorer")}><Network size={16} /><span><strong>API integration & SDK examples</strong><small>Explore APIs and request code samples</small></span><ArrowRight size={14} /></button>
-                  <button type="button" onClick={() => navigateFromDrawer("oauth-applications")}><KeyRound size={16} /><span><strong>OAuth applications</strong><small>Manage client apps and redirect settings</small></span><ArrowRight size={14} /></button>
-                  <button type="button" onClick={() => navigateFromDrawer("service-accounts")}><Users size={16} /><span><strong>Service accounts</strong><small>Create scoped machine identities</small></span><ArrowRight size={14} /></button>
-                  <button type="button" onClick={() => navigateFromDrawer("webhooks")}><Webhook size={16} /><span><strong>Webhooks</strong><small>Configure event delivery destinations</small></span><ArrowRight size={14} /></button>
-                  <button type="button" onClick={() => navigateFromDrawer("events")}><Activity size={16} /><span><strong>Event platform</strong><small>Inspect event schemas, delivery, and lineage</small></span><ArrowRight size={14} /></button>
-                  <button type="button" onClick={() => navigateFromDrawer("external-integrations")}><Plug size={16} /><span><strong>External integration catalog</strong><small>Review all platform and provider integration options</small></span><ArrowRight size={14} /></button>
-                </div>
-                <div className="integration-connectors">
-                  <div className="integration-connectors-heading"><strong>External connectors</strong><span>Preview status</span></div>
-                  <p>Provider authorization is not configured in this workspace. The catalog shows which integrations are built in, unavailable, or planned; no credentials are collected here.</p>
-                </div>
-              </>
-            ) : navigationDrawer === "changelog" ? (
+            {(
               <div className="navigation-drawer-changelog">
                 {changelogLoading ? <p role="status">Loading published updates…</p>
                   : changelogError ? (
@@ -1274,7 +1285,7 @@ export function AppShell({ activePage, onNavigate, features, children }: AppShel
                   <a href={externalLinks.status} target="_blank" rel="noreferrer">Service status<ExternalLink size={13} /></a>
                 </div>
               </div>
-            ) : null}
+            )}
           </aside>
         </div>
       )}

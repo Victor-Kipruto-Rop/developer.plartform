@@ -8,14 +8,14 @@ export function ApiDetailsPage({ onNavigate }: { onNavigate: (page: PageId) => v
       <PageHeader
         eyebrow="API"
         title="API details"
-        description="Product-level API release details are not exposed by the backend."
+        description="Product-level API release details are not exposed by the system."
       />
       <section className="panel organization-live-empty">
         <BookOpenText size={18} />
         <div>
           <strong>No product release record is available.</strong>
-          <p>This page does not invent endpoint lists, service targets, lifecycle states, or version claims. The API catalog shows scope and event-contract data returned by the backend.</p>
-          <button className="button button--secondary" type="button" onClick={() => onNavigate("api-catalog")}>Open backend API catalog<ArrowRight size={14} /></button>
+          <p>This page does not invent endpoint lists, service targets, lifecycle states, or version claims. The API catalog shows scope and event-contract data returned by the system.</p>
+          <button className="button button--secondary" type="button" onClick={() => onNavigate("api-catalog")}>Open API catalog<ArrowRight size={14} /></button>
         </div>
       </section>
     </>

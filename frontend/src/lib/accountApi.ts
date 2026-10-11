@@ -4,13 +4,14 @@ export type AccountLifecycle = {
   status: "ACTIVE" | "SUSPENDED" | "DEACTIVATED" | "PENDING_DELETION" | "DELETED";
   deletionRequestedAt: string | null;
   deletionCompletesAt: string | null;
-  deletionBlockedByOrganizationOwnership: boolean;
 };
 
 export type AccountStepUp = {
   currentPassword: string;
   mfaCode?: string;
 };
+
+export type AccountPauseDuration = 7 | 30 | 90;
 
 export type AccountDataExport = {
   exportedAt: string;
@@ -45,8 +46,8 @@ export type AccountDataExport = {
   }>;
 };
 
-export function getAccountLifecycle(): Promise<AccountLifecycle> {
-  return apiData<AccountLifecycle>("/api/v1/account/lifecycle");
+export function getAccountLifecycle(signal?: AbortSignal): Promise<AccountLifecycle> {
+  return apiData<AccountLifecycle>("/api/v1/account/lifecycle", { signal });
 }
 
 export function requestAccountDeletion(stepUp: AccountStepUp): Promise<AccountLifecycle> {
@@ -56,7 +57,9 @@ export function requestAccountDeletion(stepUp: AccountStepUp): Promise<AccountLi
   });
 }
 
-export function deactivateAccount(stepUp: AccountStepUp): Promise<void> {
+export function deactivateAccount(
+  stepUp: AccountStepUp & { durationDays: AccountPauseDuration },
+): Promise<void> {
   return apiFetch<void>("/api/v1/account/deactivate", {
     method: "POST",
     body: JSON.stringify(stepUp),

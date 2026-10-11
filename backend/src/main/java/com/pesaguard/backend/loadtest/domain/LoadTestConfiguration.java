@@ -134,6 +134,27 @@ public class LoadTestConfiguration {
         return test;
     }
 
+    public void update(String name, String description, String endpointPath, String httpMethod,
+            String contentType, Map<String, String> headers, String requestBody, UUID apiKeyId,
+            LoadPattern loadPattern, int targetVus, Integer targetRps, Integer maximumRps,
+            int maximumDurationSeconds, List<LoadTestStage> stages, List<LoadTestThreshold> thresholds) {
+        this.name = name.trim();
+        this.description = description == null || description.isBlank() ? null : description.trim();
+        this.endpointPath = endpointPath;
+        this.httpMethod = httpMethod;
+        this.contentType = contentType;
+        this.headers = Map.copyOf(headers);
+        this.requestBody = requestBody;
+        this.apiKeyId = apiKeyId;
+        this.loadPattern = loadPattern;
+        this.targetVus = targetVus;
+        this.targetRps = targetRps;
+        this.maximumRps = maximumRps;
+        this.maximumDurationSeconds = maximumDurationSeconds;
+        this.stages = List.copyOf(stages);
+        this.thresholds = List.copyOf(thresholds);
+    }
+
     public UUID getId() { return id; }
     public UUID getOrganizationId() { return organizationId; }
     public UUID getProjectId() { return projectId; }

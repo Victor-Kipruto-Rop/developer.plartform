@@ -16,8 +16,6 @@ import javax.crypto.spec.SecretKeySpec;
 
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
-import org.springframework.mail.SimpleMailMessage;
-import org.springframework.mail.javamail.JavaMailSender;
 
 import com.pesaguard.backend.common.exception.BusinessException;
 import com.pesaguard.backend.member.domain.UserAccount;
@@ -33,9 +31,10 @@ class EmailVerificationServiceTest {
         Fixture fixture = fixtureAt(ISSUED_AT);
         fixture.service().issue(fixture.account());
 
-        ArgumentCaptor<SimpleMailMessage> message = ArgumentCaptor.forClass(SimpleMailMessage.class);
-        org.mockito.Mockito.verify(fixture.mailSender()).send(message.capture());
-        String code = message.getValue().getText().replaceAll("(?s).*code is: (\\d{6}).*", "$1");
+        ArgumentCaptor<String> codeCaptor = ArgumentCaptor.forClass(String.class);
+        org.mockito.Mockito.verify(fixture.emailDelivery()).sendEmailVerificationCode(
+                anyString(), codeCaptor.capture());
+        String code = codeCaptor.getValue();
 
         when(fixture.accountRepository().findByEmailForUpdate("developer@example.com"))
                 .thenReturn(Optional.of(fixture.account()));
@@ -43,7 +42,6 @@ class EmailVerificationServiceTest {
 
         assertThat(confirmed.isEmailVerified()).isTrue();
         assertThat(code).hasSize(6).matches("\\d{6}");
-        assertThat(message.getValue().getText()).contains("expires in 10 minutes");
     }
 
     @Test
@@ -51,14 +49,15 @@ class EmailVerificationServiceTest {
         Fixture issued = fixtureAt(ISSUED_AT);
         issued.service().issue(issued.account());
 
-        ArgumentCaptor<SimpleMailMessage> message = ArgumentCaptor.forClass(SimpleMailMessage.class);
-        org.mockito.Mockito.verify(issued.mailSender()).send(message.capture());
-        String code = message.getValue().getText().replaceAll("(?s).*code is: (\\d{6}).*", "$1");
+        ArgumentCaptor<String> codeCaptor = ArgumentCaptor.forClass(String.class);
+        org.mockito.Mockito.verify(issued.emailDelivery()).sendEmailVerificationCode(
+                anyString(), codeCaptor.capture());
+        String code = codeCaptor.getValue();
         when(issued.accountRepository().findByEmailForUpdate("developer@example.com"))
                 .thenReturn(Optional.of(issued.account()));
 
         EmailVerificationService expiredService = service(
-                issued.accountRepository(), issued.mailSender(), ISSUED_AT.plusSeconds(11 * 60));
+                issued.accountRepository(), issued.emailDelivery(), ISSUED_AT.plusSeconds(11 * 60));
         assertThatThrownBy(() -> expiredService.confirm("developer@example.com", code))
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("code has expired");
@@ -69,9 +68,10 @@ class EmailVerificationServiceTest {
     void wrongCodeIsRejectedAndCountsAgainstTheAttemptLimit() {
         Fixture fixture = fixtureAt(ISSUED_AT);
         fixture.service().issue(fixture.account());
-        ArgumentCaptor<SimpleMailMessage> message = ArgumentCaptor.forClass(SimpleMailMessage.class);
-        org.mockito.Mockito.verify(fixture.mailSender()).send(message.capture());
-        String issuedCode = message.getValue().getText().replaceAll("(?s).*code is: (\\d{6}).*", "$1");
+        ArgumentCaptor<String> codeCaptor = ArgumentCaptor.forClass(String.class);
+        org.mockito.Mockito.verify(fixture.emailDelivery()).sendEmailVerificationCode(
+                anyString(), codeCaptor.capture());
+        String issuedCode = codeCaptor.getValue();
         String wrongCode = issuedCode.equals("000000") ? "000001" : "000000";
         when(fixture.accountRepository().findByEmailForUpdate("developer@example.com"))
                 .thenReturn(Optional.of(fixture.account()));
@@ -98,35 +98,35 @@ class EmailVerificationServiceTest {
         assertThat(challenge.issuedAt()).isEqualTo(ISSUED_AT);
         assertThat(challenge.expiresAt()).isEqualTo(ISSUED_AT.plusSeconds(10 * 60));
         assertThat(challenge.resendAvailableAt()).isEqualTo(ISSUED_AT.plusSeconds(60));
-        org.mockito.Mockito.verify(fixture.mailSender()).send(any(SimpleMailMessage.class));
+        org.mockito.Mockito.verify(fixture.emailDelivery()).sendEmailVerificationCode(
+                anyString(), anyString());
     }
 
     private Fixture fixtureAt(Instant now) {
         UserAccountRepository accountRepository = mock(UserAccountRepository.class);
-        JavaMailSender mailSender = mock(JavaMailSender.class);
+        AccountEmailDeliveryService emailDelivery = mock(AccountEmailDeliveryService.class);
         UserAccount account = UserAccount.create("developer@example.com", "Developer", "password-hash");
         when(accountRepository.saveAndFlush(any(UserAccount.class)))
                 .thenAnswer(invocation -> invocation.getArgument(0));
-        return new Fixture(accountRepository, mailSender, account,
-                service(accountRepository, mailSender, now));
+        return new Fixture(accountRepository, emailDelivery, account,
+                service(accountRepository, emailDelivery, now));
     }
 
     private EmailVerificationService service(
             UserAccountRepository accountRepository,
-            JavaMailSender mailSender,
+            AccountEmailDeliveryService emailDelivery,
             Instant now) {
         return new EmailVerificationService(
                 accountRepository,
                 new SecretKeySpec(new byte[32], "HmacSHA256"),
                 Clock.fixed(now, ZoneOffset.UTC),
-                mailSender,
                 TestProperties.platform(),
-                "no-reply@example.com");
+                emailDelivery);
     }
 
     private record Fixture(
             UserAccountRepository accountRepository,
-            JavaMailSender mailSender,
+            AccountEmailDeliveryService emailDelivery,
             UserAccount account,
             EmailVerificationService service) {
     }

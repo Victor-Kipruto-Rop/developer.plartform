@@ -106,6 +106,32 @@ function safeMessageForStatus(status: number, code: string): string {
       return "Enter an organization name between 2 and 120 characters.";
     case "PHONE_ALREADY_REGISTERED":
       return "This phone number is already in use. Use a different number or sign in.";
+    case "WEAK_PASSWORD":
+      return "Choose a password with at least 12 characters that doesn't include your email or personal information and hasn't appeared in a known data breach.";
+    case "PASSWORD_RESET_INVALID":
+      return "This password reset link is invalid or has expired. Request a new reset email.";
+    case "LOAD_TEST_TARGET_BLOCKED":
+      return "This route is blocked because it may trigger financial, external, or destructive side effects.";
+    case "LOAD_TEST_TARGET_PATH_INVALID":
+      return "Use a safe relative API path on the selected environment.";
+    case "LOAD_TEST_ENVIRONMENT_INACTIVE":
+      return "Load tests can only be configured for an active environment.";
+    case "LOAD_TEST_LIMIT_EXCEEDED":
+      return "The requested load exceeds the configured safety limits.";
+    case "LOAD_TEST_DURATION_EXCEEDED":
+      return "Reduce the combined load-stage duration to fit the configured limit.";
+    case "LOAD_TEST_VU_PROFILE_INVALID":
+      return "Each stage must stay within the configured virtual-user target.";
+    case "LOAD_TEST_THRESHOLD_INVALID":
+      return "Choose a supported pass/fail metric and comparison.";
+    case "LOAD_TEST_HAS_RUN_HISTORY":
+      return "This configuration has run history. Clone it to make changes without altering that history.";
+    case "LOAD_TEST_SCOPE_IMMUTABLE":
+      return "A load-test configuration cannot be moved to another project or environment.";
+    case "PRODUCTION_LOAD_TEST_CONFIRMATION_REQUIRED":
+      return "Confirm Production execution and ensure you have permission before starting this run.";
+    case "LOAD_TEST_CONCURRENT_LIMIT_EXCEEDED":
+      return "Your organization has reached its concurrent load-test limit. Try again after a run finishes.";
     case "EMAIL_ALREADY_REGISTERED":
       return "We couldn't complete registration. Check your details and try again.";
     case "REGISTRATION_DISABLED":

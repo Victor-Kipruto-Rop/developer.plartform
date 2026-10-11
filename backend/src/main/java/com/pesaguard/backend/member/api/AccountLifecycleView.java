@@ -7,6 +7,5 @@ import com.pesaguard.backend.member.domain.UserStatus;
 public record AccountLifecycleView(
         UserStatus status,
         Instant deletionRequestedAt,
-        Instant deletionCompletesAt,
-        boolean deletionBlockedByOrganizationOwnership) {
+        Instant deletionCompletesAt) {
 }

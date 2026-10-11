@@ -19,6 +19,7 @@ import com.pesaguard.backend.common.exception.ResourceNotFoundException;
 import com.pesaguard.backend.member.application.EmailVerificationService;
 import com.pesaguard.backend.member.application.PasswordRecoveryService;
 import com.pesaguard.backend.member.application.PasswordRecoveryDeliveryService;
+import com.pesaguard.backend.member.application.PasswordChangeService;
 import com.pesaguard.backend.member.infrastructure.UserAccountRepository;
 import com.pesaguard.backend.rbac.application.AuthorizationService;
 import com.pesaguard.backend.security.principals.AuthenticatedUser;
@@ -45,6 +46,7 @@ public class AuthenticationController {
     private final RegistrationService registrationService;
     private final LoginService loginService;
     private final PasswordRecoveryService passwordRecoveryService;
+    private final PasswordChangeService passwordChangeService;
     private final PasswordRecoveryDeliveryService passwordRecoveryDeliveryService;
     private final EmailVerificationService emailVerificationService;
     private final MfaService mfaService;
@@ -56,6 +58,7 @@ public class AuthenticationController {
             RegistrationService registrationService,
             LoginService loginService,
             PasswordRecoveryService passwordRecoveryService,
+            PasswordChangeService passwordChangeService,
             PasswordRecoveryDeliveryService passwordRecoveryDeliveryService,
             EmailVerificationService emailVerificationService,
             MfaService mfaService,
@@ -65,6 +68,7 @@ public class AuthenticationController {
         this.registrationService = registrationService;
         this.loginService = loginService;
         this.passwordRecoveryService = passwordRecoveryService;
+        this.passwordChangeService = passwordChangeService;
         this.passwordRecoveryDeliveryService = passwordRecoveryDeliveryService;
         this.emailVerificationService = emailVerificationService;
         this.mfaService = mfaService;
@@ -251,12 +255,24 @@ public class AuthenticationController {
         return ResponseEntity.noContent().build();
     }
 
-    @PostMapping("/change-password")
-    ResponseEntity<Void> changePassword(@AuthenticationPrincipal AuthenticatedUser principal,
-            @Valid @RequestBody ChangePasswordRequest request) {
-        passwordRecoveryService.change(principal.userId(), principal.sessionId(),
-                request.currentPassword(), request.newPassword());
-        return ResponseEntity.noContent().build();
+    @PostMapping("/change-password/request")
+    ResponseEntity<ApiResponse<PasswordChangeChallengeView>> requestPasswordChange(
+            @AuthenticationPrincipal AuthenticatedUser principal,
+            @Valid @RequestBody PasswordChangeStartRequest request) {
+        PasswordChangeChallengeView challenge = passwordChangeService.request(
+                principal.userId(), principal.sessionId(), request.currentPassword(), request.newPassword());
+        return ResponseEntity.accepted()
+                .header(HttpHeaders.CACHE_CONTROL, "no-store")
+                .body(ApiResponse.of(challenge));
+    }
+
+    @PostMapping("/change-password/verify")
+    ResponseEntity<Void> verifyPasswordChange(
+            @AuthenticationPrincipal AuthenticatedUser principal,
+            @Valid @RequestBody PasswordChangeVerifyRequest request) {
+        passwordChangeService.verify(principal.userId(), principal.sessionId(), request.challengeId(),
+                request.code(), request.currentPassword(), request.newPassword());
+        return ResponseEntity.noContent().header(HttpHeaders.CACHE_CONTROL, "no-store").build();
     }
 
     /** The caller's live sessions, most recently active first. */

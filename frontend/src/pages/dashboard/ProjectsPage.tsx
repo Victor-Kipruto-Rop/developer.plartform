@@ -232,7 +232,7 @@ export function ProjectsPage({ onNavigate }: { onNavigate: (page: PageId) => voi
         <div className="dialog-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) setArchiveTarget(null); }}>
           <section className="workflow-dialog" role="dialog" aria-modal="true" aria-labelledby="archive-project-title">
             <div className="workflow-dialog-heading">
-              <div><span className="section-eyebrow">PROJECT MANAGEMENT</span><h2 id="archive-project-title">Archive “{archiveTarget.name}”?</h2><p>The project will be archived in the backend and will no longer be available for active development.</p></div>
+              <div><span className="section-eyebrow">PROJECT MANAGEMENT</span><h2 id="archive-project-title">Archive “{archiveTarget.name}”?</h2><p>The project will be archived in the system and will no longer be available for active development.</p></div>
               <button className="icon-button" type="button" aria-label="Close dialog" onClick={() => setArchiveTarget(null)}><X size={17} /></button>
             </div>
             {error && <p className="workflow-error" role="alert">{error}</p>}

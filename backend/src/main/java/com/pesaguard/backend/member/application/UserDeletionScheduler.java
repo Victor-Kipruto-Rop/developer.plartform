@@ -6,6 +6,7 @@ import java.util.List;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.dao.DataAccessException;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
@@ -40,13 +41,9 @@ public class UserDeletionScheduler {
         for (UserAccount account : dueAccounts) {
             try {
                 lifecycleService.completeDeletion(account.getId());
-            } catch (BusinessException blocked) {
-                if ("ORGANIZATION_OWNERSHIP_TRANSFER_REQUIRED".equals(blocked.code())) {
-                    LOGGER.warn("Account deletion remains blocked until organization ownership is transferred: {}",
-                            account.getId());
-                } else {
-                    throw blocked;
-                }
+            } catch (DataAccessException | BusinessException failure) {
+                LOGGER.error("Could not complete scheduled account deletion for {}",
+                        account.getId(), failure);
             }
         }
     }

@@ -493,7 +493,7 @@ export function EnvironmentPage() {
           </section>
 
           <section id="environment-limits" className="panel settings-group environment-limits-panel">
-            <div className="settings-group-header"><div className="settings-group-title-wrap"><span className="settings-group-icon"><RefreshCw size={17} /></span><div><h2>Rate limits and quotas</h2><p>Backend-enforced key, credential, and environment request budgets.</p></div></div><span className="table-tag">ENFORCED</span></div>
+            <div className="settings-group-header"><div className="settings-group-title-wrap"><span className="settings-group-icon"><RefreshCw size={17} /></span><div><h2>Rate limits and quotas</h2><p>System-enforced key, credential, and environment request budgets.</p></div></div><span className="table-tag">ENFORCED</span></div>
             {limitsError && <p className="workflow-error" role="alert">{limitsError}</p>}
             {limitsMessage && <p className="workflow-success" role="status">{limitsMessage}</p>}
             {limits && <ValidatedForm className="workflow-form" onSubmit={(event) => void saveLimits(event)}>

@@ -13,7 +13,6 @@ import { createUuid } from "./uuid";
 import type {
   AuthSession,
   BackupCodes,
-  ChangePasswordRequest,
   CurrentSession,
   DeveloperOnboardingStatus,
   DeveloperOnboardingStep,
@@ -311,8 +310,26 @@ export function resetPassword(request: ResetPasswordRequest): Promise<void> {
   });
 }
 
-export function changePassword(request: ChangePasswordRequest): Promise<void> {
-  return apiData<void>("/api/v1/auth/change-password", {
+export type PasswordChangeChallenge = {
+  challengeId: string;
+  maskedEmail: string;
+  expiresAt: string;
+};
+
+export function requestPasswordChange(request: { currentPassword: string; newPassword: string }): Promise<PasswordChangeChallenge> {
+  return apiData<PasswordChangeChallenge>("/api/v1/auth/change-password/request", {
+    method: "POST",
+    body: JSON.stringify(request),
+  });
+}
+
+export function verifyPasswordChange(request: {
+  challengeId: string;
+  code: string;
+  currentPassword: string;
+  newPassword: string;
+}): Promise<void> {
+  return apiData<void>("/api/v1/auth/change-password/verify", {
     method: "POST",
     body: JSON.stringify(request),
   });

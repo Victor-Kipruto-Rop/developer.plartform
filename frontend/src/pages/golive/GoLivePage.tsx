@@ -1,6 +1,6 @@
 import { getUserMessage } from "../../lib/errors";
 import { useCallback, useEffect, useState, type KeyboardEvent } from "react";
-import { Activity, AlertTriangle, ArrowRight, Check, CheckCircle2, Clipboard, Code2, ExternalLink, KeyRound, LoaderCircle, Rocket, Settings2, ShieldCheck, Webhook, XCircle } from "lucide-react";
+import { Activity, AlertTriangle, Check, CheckCircle2, Clipboard, Code2, ExternalLink, KeyRound, LoaderCircle, Rocket, Settings2, ShieldCheck, Webhook, XCircle } from "lucide-react";
 import { PageHeader } from "../../components/ui/PageHeader";
 import { useAuth } from "../../context/AuthContext";
 import { apiData } from "../../lib/api";
@@ -135,7 +135,7 @@ const goLiveSectionDescriptions = {
   integration: "Use the Production API host and developer tools to prepare your application.",
   credentials: "Create a least-privilege key bound only to this Production environment.",
   webhooks: "Review HTTPS transport, signing, and any remaining delivery requirements.",
-  verification: "Run a fresh backend verification; its READY result is valid for 15 minutes.",
+  verification: "Run a fresh system verification; its READY result is valid for 15 minutes.",
   launch: "Review authorization and readiness before enabling live traffic.",
   "post-launch": "Inspect environment-scoped usage, API requests, and webhook deliveries.",
 } satisfies Record<(typeof goLiveSections)[number][0], string>;
@@ -186,7 +186,6 @@ function checkIcon(status: GoLiveCheck["status"]) {
 function remediationPage(route: string | null): PageId | null {
   switch (route) {
     case "/?page=account-settings": return "account-settings";
-    case "/?page=organizations": return "organizations";
     case "/?page=projects": return "projects";
     case "/?page=environments": return "environments";
     case "/?page=api-keys": return "api-keys";
@@ -396,7 +395,7 @@ export function GoLivePage({ onNavigate, activeSection, onNavigateSection }: GoL
       const result = job.result;
       setReadiness(result);
       setVerifications((current) => [result, ...current.filter((item) => item.verificationId !== result.verificationId)]);
-      setNotice("Verification completed. Readiness and launch eligibility were computed by the backend.");
+      setNotice("Verification completed. Readiness and launch eligibility were computed by the system.");
     } catch (verificationError) {
       setError(errorMessage(verificationError));
     } finally {
@@ -564,12 +563,11 @@ export function GoLivePage({ onNavigate, activeSection, onNavigateSection }: GoL
           </div>
         </section>
       ) : !permissionsLoaded ? (
-        <section className="panel golive-empty"><LoaderCircle size={22} /><h2>Checking Go-Live access</h2><p>Loading your active organization role and permissions.</p></section>
+        <section className="panel golive-empty"><LoaderCircle size={22} /><h2>Checking Go-Live access</h2><p>Loading your account permissions.</p></section>
       ) : !canViewGoLive ? (
         <section className="panel golive-empty">
           <ShieldCheck size={24} /><h2>Go-Live access is required</h2>
-          <p>Your current role does not include <code>production:view</code>. An organization owner or admin must grant Go-Live access before readiness can be checked.</p>
-          <div className="golive-links"><button type="button" onClick={() => onNavigate("organization-members")}>Open Team &amp; Access <ArrowRight size={14} /></button></div>
+          <p>Your account does not include <code>production:view</code>. Contact PesaGuard support if you believe this access is missing.</p>
         </section>
       ) : (
         <>
@@ -780,11 +778,10 @@ export function GoLivePage({ onNavigate, activeSection, onNavigateSection }: GoL
               <div className="golive-links">
                 <button type="button" onClick={() => onNavigate("api-explorer")}>Open API Explorer <ExternalLink size={14} /></button>
                 <button type="button" onClick={() => onNavigate("api-catalog")}>Review API reference <ExternalLink size={14} /></button>
-                <button type="button" onClick={() => onNavigate("developer-tools")}>Open developer tools <ExternalLink size={14} /></button>
               </div>
             </article>
             <article className="panel golive-card">
-              <div className="panel-heading"><div><h2>Production API</h2><p>Canonical destination returned by the backend</p></div></div>
+              <div className="panel-heading"><div><h2>Production API</h2><p>Canonical destination returned by the system</p></div></div>
               <code className="golive-integration-url">{readiness?.baseUrl ?? "Load readiness to retrieve the Production API URL."}</code>
               <p className="golive-note">The platform does not run a live connectivity or transaction probe from this page.</p>
             </article>
@@ -795,7 +792,7 @@ export function GoLivePage({ onNavigate, activeSection, onNavigateSection }: GoL
               <div className="golive-credential-banner"><span><KeyRound size={21} /></span><div><strong>Environment-bound access</strong><p>Keys created here stay scoped to this Production environment. The full secret is shown once.</p></div></div>
               <div className="golive-links"><button type="button" onClick={() => onNavigate("api-keys")}>Manage Production API keys <ExternalLink size={14} /></button></div>
             </article>
-            <article className="panel table-panel golive-checks"><div className="panel-heading"><div><h2>Credential readiness</h2><p>Active key presence is checked by the backend.</p></div><ShieldCheck size={17} className="heading-icon" /></div>
+            <article className="panel table-panel golive-checks"><div className="panel-heading"><div><h2>Credential readiness</h2><p>Active key presence is checked by the system.</p></div><ShieldCheck size={17} className="heading-icon" /></div>
               {checksView((readiness?.checks ?? []).filter((check) => check.category === "CREDENTIALS"))}
             </article>
           </section>}
@@ -812,13 +809,13 @@ export function GoLivePage({ onNavigate, activeSection, onNavigateSection }: GoL
               <div className="golive-links"><button type="button" onClick={() => onNavigate("webhooks")}>Configure webhooks <ExternalLink size={14} /></button></div>
               <p className="golive-note">Delivery history and endpoint challenge verification are not currently used as Go-Live checks.</p>
             </article>
-            <article className="panel table-panel golive-checks"><div className="panel-heading"><div><h2>Webhook readiness</h2><p>Backend checks transport and signing configuration.</p></div></div>
+            <article className="panel table-panel golive-checks"><div className="panel-heading"><div><h2>Webhook readiness</h2><p>The system checks transport and signing configuration.</p></div></div>
               {checksView((readiness?.checks ?? []).filter((check) => check.category === "WEBHOOKS"))}
             </article>
           </section>}
 
           {activeSection === "verification" && <section className="golive-grid golive-history-grid">
-            <article className="panel golive-card"><div className="panel-heading"><div><h2>Run verification</h2><p>The backend checks Production readiness and saves the result before responding.</p></div></div>
+            <article className="panel golive-card"><div className="panel-heading"><div><h2>Run verification</h2><p>The system checks Production readiness and saves the result before responding.</p></div></div>
               <div className={`golive-verification-orb${running ? " golive-verification-orb--running" : readiness?.canLaunch ? " golive-verification-orb--passed" : ""}`}>
                 <span><ShieldCheck size={27} /></span>
                 <strong>{running ? "Checking" : readiness?.canLaunch ? "Ready" : "Awaiting run"}</strong>
@@ -838,13 +835,13 @@ export function GoLivePage({ onNavigate, activeSection, onNavigateSection }: GoL
                   </button>
                   : <p className="golive-note">Your role does not have `production:verify`; ask an organization owner or admin to grant access.</p>}
             </article>
-            <article className="panel golive-card"><div className="panel-heading"><div><h2>Verification history</h2><p>Recent backend readiness runs</p></div></div>
+            <article className="panel golive-card"><div className="panel-heading"><div><h2>Verification history</h2><p>Recent system readiness runs</p></div></div>
               {verifications.length === 0 ? <p className="security-empty-state">No verifications recorded yet.</p> : <ul className="golive-history">{verifications.map((item) => <li key={item.verificationId ?? item.verifiedAt}><div><strong>{item.state}</strong><span>{item.passedChecks} passed · {item.failedChecks} blockers</span></div><time>{dateLabel(item.verifiedAt)}</time></li>)}</ul>}
             </article>
           </section>}
 
           {activeSection === "launch" && <section className="golive-grid">
-            <article className="panel golive-card"><div className="panel-heading"><div><h2>Launch status</h2><p>Backend state for this Production environment</p></div><Rocket size={17} className="heading-icon" /></div>
+            <article className="panel golive-card"><div className="panel-heading"><div><h2>Launch status</h2><p>System state for this Production environment</p></div><Rocket size={17} className="heading-icon" /></div>
               <div className={`golive-launch-console${readiness?.state === "LIVE" ? " golive-launch-console--live" : readiness?.state === "SUSPENDED" ? " golive-launch-console--suspended" : readiness?.canLaunch ? " golive-launch-console--ready" : ""}`}>
                 <span className="golive-launch-console__light"><i /></span>
                 <div><span>TRAFFIC GATE</span><strong>{readiness?.state === "LIVE" ? "Live traffic enabled" : readiness?.state === "SUSPENDED" ? "Production suspended" : readiness?.canLaunch ? "Ready for launch review" : "Launch gate closed"}</strong></div>

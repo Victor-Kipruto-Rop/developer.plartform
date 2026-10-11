@@ -54,7 +54,7 @@ export function ActivityPage() {
       <PageHeader eyebrow="MONITOR" title="Activity" description="Review persisted organization audit events." action={<button className="button button--secondary" type="button" disabled={loading} onClick={() => void loadActivity()}><RefreshCw size={14} />Refresh</button>} />
       {error && <p className="notification-alert" role="alert">{error}</p>}
       <section className="panel table-panel">
-        <div className="panel-heading"><div><h2>Audit trail</h2><p>{total === 0 ? "No records" : `Showing ${page * 15 + 1}–${page * 15 + events.length} of ${total} records`}</p></div><span className="table-tag">BACKEND</span></div>
+        <div className="panel-heading"><div><h2>Audit trail</h2><p>{total === 0 ? "No records" : `Showing ${page * 15 + 1}–${page * 15 + events.length} of ${total} records`}</p></div><span className="table-tag">SYSTEM</span></div>
         <label className="security-audit-search"><Search size={14} /><span className="visually-hidden">Search events on this page</span><input placeholder="Search this page by action, actor, resource, or request ID" value={query} onChange={(event) => setQuery(event.target.value)} /></label>
         <div className="activity-pagination" aria-label="Activity pages">
           <button className="button button--secondary" type="button" disabled={loading || page === 0} onClick={() => setPage((current) => Math.max(0, current - 1))}><ChevronLeft size={14} />Previous</button>

@@ -142,26 +142,9 @@ public class LoadTestService {
 
     @Transactional
     public LoadTestView create(AuthenticatedUser principal, CreateLoadTestRequest request) {
-        authorizationService.requirePermission(principal, Permission.PROJECT_UPDATE);
-        authorizationService.requirePermission(principal, Permission.ENVIRONMENT_UPDATE);
-        projectAuthorization.requireProjectManage(principal, request.projectId());
-        Project project = requireActiveProject(principal, request.projectId());
-        ProjectEnvironment environment = requireEnvironment(
-                principal, request.projectId(), request.environmentId(), EnvironmentPermission.WRITE);
-        validator.validate(request, maxVus, maxRps, maxDurationSeconds);
-        if (environment.getStatus() != EnvironmentStatus.ACTIVE) {
-            throw bad("LOAD_TEST_ENVIRONMENT_INACTIVE", "Load tests require an active environment.");
-        }
-        if (request.apiKeyId() != null) {
-            ApiKey key = apiKeyRepository.findByIdAndOrganizationIdAndProjectIdAndEnvironmentId(
-                    request.apiKeyId(), principal.organizationId(), project.getId(), environment.getId())
-                    .orElseThrow(() -> new ResourceNotFoundException("API key"));
-            if (!key.isUsable(clock.instant())) {
-                throw bad("LOAD_TEST_API_KEY_UNAVAILABLE", "The selected API key is not active.");
-            }
-        }
+        ProjectEnvironment environment = validateConfiguration(principal, request);
         LoadTestConfiguration test = LoadTestConfiguration.create(
-                principal.organizationId(), project.getId(), environment.getId(), principal.userId(),
+                principal.organizationId(), environment.getProjectId(), environment.getId(), principal.userId(),
                 request.name(), request.description(), request.endpointPath(),
                 request.httpMethod(), request.contentType(),
                 request.headers() == null ? Map.of() : request.headers(),
@@ -170,6 +153,31 @@ public class LoadTestService {
                 request.stages(), request.thresholds());
         test = testRepository.saveAndFlush(test);
         recordEvent(principal, environment, test, null, "load_test.created",
+                Map.of("loadTestId", test.getId().toString()));
+        return LoadTestView.from(test, environment);
+    }
+
+    @Transactional
+    public LoadTestView update(AuthenticatedUser principal, UUID testId, CreateLoadTestRequest request) {
+        LoadTestConfiguration test = requireTest(principal, testId, true);
+        if (!test.getProjectId().equals(request.projectId())
+                || !test.getEnvironmentId().equals(request.environmentId())) {
+            throw new BusinessException(HttpStatus.CONFLICT, "LOAD_TEST_SCOPE_IMMUTABLE",
+                    "A load-test configuration cannot be moved to another project or environment.");
+        }
+        if (!runRepository.findByLoadTestIdAndOrganizationIdAndProjectIdAndEnvironmentIdOrderByCreatedAtDesc(
+                testId, principal.organizationId(), test.getProjectId(), test.getEnvironmentId()).isEmpty()) {
+            throw new BusinessException(HttpStatus.CONFLICT, "LOAD_TEST_HAS_RUN_HISTORY",
+                    "A configuration with run history cannot be edited. Clone it to create a new configuration.");
+        }
+        ProjectEnvironment environment = validateConfiguration(principal, request);
+        test.update(request.name(), request.description(), request.endpointPath(), request.httpMethod(),
+                request.contentType(), request.headers() == null ? Map.of() : request.headers(),
+                request.requestBody(), request.apiKeyId(), request.loadPattern(), request.targetVus(),
+                request.targetRps(), request.maximumRps(), request.maximumDurationSeconds(),
+                request.stages(), request.thresholds());
+        test = testRepository.saveAndFlush(test);
+        recordEvent(principal, environment, test, null, "load_test.updated",
                 Map.of("loadTestId", test.getId().toString()));
         return LoadTestView.from(test, environment);
     }
@@ -392,6 +400,29 @@ public class LoadTestService {
         requireActiveProject(principal, projectId);
         return requireEnvironment(principal, projectId, environmentId,
                 write ? EnvironmentPermission.WRITE : EnvironmentPermission.READ);
+    }
+
+    private ProjectEnvironment validateConfiguration(
+            AuthenticatedUser principal, CreateLoadTestRequest request) {
+        authorizationService.requirePermission(principal, Permission.PROJECT_UPDATE);
+        authorizationService.requirePermission(principal, Permission.ENVIRONMENT_UPDATE);
+        projectAuthorization.requireProjectManage(principal, request.projectId());
+        Project project = requireActiveProject(principal, request.projectId());
+        ProjectEnvironment environment = requireEnvironment(
+                principal, request.projectId(), request.environmentId(), EnvironmentPermission.WRITE);
+        validator.validate(request, maxVus, maxRps, maxDurationSeconds);
+        if (environment.getStatus() != EnvironmentStatus.ACTIVE) {
+            throw bad("LOAD_TEST_ENVIRONMENT_INACTIVE", "Load tests require an active environment.");
+        }
+        if (request.apiKeyId() != null) {
+            ApiKey key = apiKeyRepository.findByIdAndOrganizationIdAndProjectIdAndEnvironmentId(
+                    request.apiKeyId(), principal.organizationId(), project.getId(), environment.getId())
+                    .orElseThrow(() -> new ResourceNotFoundException("API key"));
+            if (!key.isUsable(clock.instant())) {
+                throw bad("LOAD_TEST_API_KEY_UNAVAILABLE", "The selected API key is not active.");
+            }
+        }
+        return environment;
     }
 
     private ProjectEnvironment requireEnvironment(

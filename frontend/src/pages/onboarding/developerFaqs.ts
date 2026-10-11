@@ -47,7 +47,7 @@ export const developerFaqGroups: DeveloperFaqGroup[] = [
       {
         question: "How does multi-factor authentication affect sign-in?",
         answer: [
-          "If multi-factor authentication has been enabled for your account, the backend first confirms your password and then requires a valid second-factor code. The sign-in form will ask for that code as an additional step.",
+          "If multi-factor authentication has been enabled for your account, the system first confirms your password and then requires a valid second-factor code. The sign-in form will ask for that code as an additional step.",
           "A correct password alone does not create a session when the second factor is required. If you cannot access your configured authenticator, use the recovery process provided for your account or contact your organization administrator.",
         ],
       },
@@ -68,7 +68,7 @@ export const developerFaqGroups: DeveloperFaqGroup[] = [
       {
         question: "How long is a verification code valid?",
         answer: [
-          "A code is valid for 10 minutes from the time the backend issues it. The verification page displays the remaining time based on the issuance and expiry times supplied by the server, rather than starting a fresh timer whenever the screen is opened.",
+          "A code is valid for 10 minutes from the time the system issues it. The verification page displays the remaining time based on the issuance and expiry times supplied by the server, rather than starting a fresh timer whenever the screen is opened.",
           "Once that expiry time has passed, the code cannot be used, even if it is entered correctly. Request a replacement code when the resend cooldown allows it.",
         ],
       },
@@ -76,7 +76,7 @@ export const developerFaqGroups: DeveloperFaqGroup[] = [
         question: "When can I request another code, and what happens to the old one?",
         answer: [
           "There is a 60-second cooldown between code issues for the same account. After the cooldown, request a new code from the verification page.",
-          "When the backend issues a replacement, it replaces the outstanding code, so the previous code is no longer valid. The replacement receives its own 10-minute validity period. For privacy, the resend endpoint does not reveal whether an email belongs to an account or whether it is already verified.",
+          "When the system issues a replacement, it replaces the outstanding code, so the previous code is no longer valid. The replacement receives its own 10-minute validity period. For privacy, the resend endpoint does not reveal whether an email belongs to an account or whether it is already verified.",
         ],
       },
       {
@@ -89,7 +89,7 @@ export const developerFaqGroups: DeveloperFaqGroup[] = [
       {
         question: "What happens if I enter the wrong code too many times?",
         answer: [
-          "The backend limits incorrect verification attempts. If the configured attempt limit is reached, the current code can no longer be used to complete verification.",
+          "The system limits incorrect verification attempts. If the configured attempt limit is reached, the current code can no longer be used to complete verification.",
           "Request a replacement code after the resend cooldown and enter the new code carefully. The account remains pending verification; reaching the attempt limit does not delete the account.",
         ],
       },
@@ -117,15 +117,15 @@ export const developerFaqGroups: DeveloperFaqGroup[] = [
       {
         question: "What does the onboarding process set up?",
         answer: [
-          "The guided flow collects the developer profile information required by the workspace, then provisions the project and its sandbox environment through the backend. The selected starter template is applied during that project setup.",
-          "Provisioning is performed as a backend operation. The page reports the project, environment, sandbox, and credential returned by that operation; it does not treat a visual example or placeholder as a completed workspace.",
+          "The guided flow collects the developer profile information required by the workspace, then provisions the project and its sandbox environment through the system. The selected starter template is applied during that project setup.",
+          "Provisioning is performed as a system operation. The page reports the project, environment, sandbox, and credential returned by that operation; it does not treat a visual example or placeholder as a completed workspace.",
         ],
       },
       {
         question: "What kind of API key is created during first-time setup?",
         answer: [
           "The initial onboarding flow creates a sandbox credential scoped to read transactions. It is not a production payment credential and does not grant permission to initiate payments.",
-          "The raw key is returned once during provisioning so you can copy it and keep it securely. The workspace confirmation includes the expiry returned by the backend; the platform does not show the secret again later.",
+          "The raw key is returned once during provisioning so you can copy it and keep it securely. The workspace confirmation includes the expiry returned by the system; the platform does not show the secret again later.",
         ],
       },
       {

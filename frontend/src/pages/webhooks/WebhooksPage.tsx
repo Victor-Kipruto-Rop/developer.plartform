@@ -825,7 +825,7 @@ export function WebhooksPage() {
 
               <section className="panel webhooks-panel webhooks-deliveries-panel">
                 <div className="webhooks-section-heading webhooks-deliveries-heading">
-                  <div><span className="webhooks-eyebrow">OBSERVABILITY</span><h2>Delivery attempts</h2><p>Backend-recorded outcomes. Failed attempts can be replayed when the endpoint and subscription are active.</p></div>
+                  <div><span className="webhooks-eyebrow">OBSERVABILITY</span><h2>Delivery attempts</h2><p>System-recorded outcomes. Failed attempts can be replayed when the endpoint and subscription are active.</p></div>
                   <span className="webhooks-count">{deliveryTotal}</span>
                 </div>
                 <div className="webhooks-delivery-filters">

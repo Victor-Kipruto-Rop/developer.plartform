@@ -5,7 +5,6 @@ import { getCountries, getCountryCallingCode, parsePhoneNumberFromString, type C
 import { ApiError } from "../../lib/api";
 import * as authApi from "../../lib/authApi";
 import { useAuth } from "../../context/AuthContext";
-import { organizationNameValidationMessage } from "../../lib/organizationNameValidation";
 import type { LoginEmailMfaChallenge } from "../../types/auth";
 import "../../styles/auth-pages.css";
 
@@ -209,8 +208,6 @@ function AuthPage({ mode, initialView = mode }: AuthPageProps) {
   } = useAuth();
   const [view, setView] = useState<AuthView>(initialView);
   const [email, setEmail] = useState("");
-  const [organizationName, setOrganizationName] = useState("");
-  const [organizationNameTouched, setOrganizationNameTouched] = useState(false);
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
   const [phoneCountry, setPhoneCountry] = useState<CountryCode>("KE");
@@ -254,7 +251,6 @@ function AuthPage({ mode, initialView = mode }: AuthPageProps) {
   const [successDialog, setSuccessDialog] = useState<"changed" | null>(null);
   const [resendAvailableAt, setResendAvailableAt] = useState<number | null>(null);
   const [now, setNow] = useState(Date.now());
-  const organizationError = organizationNameTouched ? organizationNameValidationMessage(organizationName) : null;
   const verificationStarted = useRef(false);
   const successActionRef = useRef<HTMLButtonElement | HTMLAnchorElement>(null);
   const resendSeconds = resendAvailableAt === null ? 0 : Math.max(0, Math.ceil((resendAvailableAt - now) / 1000));
@@ -387,10 +383,8 @@ function AuthPage({ mode, initialView = mode }: AuthPageProps) {
     setRegistrationAttempted(true);
     setValidationAttempted(true);
     setError("");
-    const organizationValidationError = organizationNameValidationMessage(organizationName);
-    setOrganizationNameTouched(true);
     if (!firstName.trim() || !lastName.trim() || !isEmailValid || !password
-      || !confirmPassword || organizationValidationError || password !== confirmPassword
+      || !confirmPassword || password !== confirmPassword
       || !acceptedTerms) return;
     const parsedPhoneNumber = parsePhoneNumberFromString(phoneNumber, phoneCountry);
     if (!parsedPhoneNumber?.isValid()) return;
@@ -401,7 +395,7 @@ function AuthPage({ mode, initialView = mode }: AuthPageProps) {
         email.trim(),
         password,
         displayName,
-        organizationName.trim(),
+        "Personal workspace",
         undefined,
         acceptedTerms,
         undefined,
@@ -410,12 +404,12 @@ function AuthPage({ mode, initialView = mode }: AuthPageProps) {
       setEmail(result.email);
       if (result.verificationRequired) {
         setResendAvailableAt(result.verificationResendAvailableAt ? Date.parse(result.verificationResendAvailableAt) : null);
-        setMessage(`Enter the verification code sent to ${result.email} to finish creating ${result.organizationName || organizationName.trim()}.`);
+        setMessage(`Enter the verification code sent to ${result.email} to finish creating your account.`);
         setValidationAttempted(false);
         setRegistrationAttempted(false);
         setView("verify");
       } else {
-        setMessage(`${result.organizationName || organizationName.trim()} is ready. Sign in to continue.`);
+        setMessage("Your personal workspace is ready. Sign in to continue.");
         setPassword("");
         setConfirmPassword("");
         setValidationAttempted(false);
@@ -424,7 +418,7 @@ function AuthPage({ mode, initialView = mode }: AuthPageProps) {
       }
     } catch (registrationError) {
       setError(registrationError instanceof ApiError && registrationError.code === "USERNAME_REQUIRED"
-        ? "Enter an organization name to create your account."
+        ? "Your account setup could not be completed. Please try again."
         : getUserMessage(registrationError, "Registration failed. Please try again."));
     } finally {
       setBusy(false);
@@ -523,6 +517,7 @@ function AuthPage({ mode, initialView = mode }: AuthPageProps) {
       await authApi.resetPassword({ token: resetToken, newPassword: password });
       setPassword("");
       setConfirmPassword("");
+      setValidationAttempted(false);
       setSuccessDialog("changed");
     } catch (resetError) {
       setError(getUserMessage(resetError, "Password reset failed. Request a new reset link."));
@@ -567,7 +562,7 @@ function AuthPage({ mode, initialView = mode }: AuthPageProps) {
   }[view];
   const subtitle = {
     login: "Use your email address and password to sign in.",
-    register: "Create your developer account and organization.",
+    register: "Create your personal PesaGuard account.",
     verify: `Enter the six-digit code sent to ${email || "your email address"}.`,
     "email-mfa": `We sent a One Time Password to ${loginMfaChallenge?.maskedEmail ?? (challenge?.kind === "email_mfa_required" ? challenge.challenge.maskedEmail : "your email address")}.`,
     forgot: "Enter the email address you used to register. We’ll send a password reset link if it matches an account.",
@@ -640,12 +635,6 @@ function AuthPage({ mode, initialView = mode }: AuthPageProps) {
           </span>
           {registrationAttempted && !email.trim() && <small className="public-auth-field-error" role="alert">Please enter your email address.</small>}
           {registrationAttempted && email.trim() && !isEmailValid && <small className="public-auth-field-error" role="alert">Enter a valid email address.</small>}
-        </label>
-        <label className="public-auth-register-field">Organization name
-          <span className="public-auth-register-input-wrap"><input autoComplete="organization" type="text" name="organizationName" required maxLength={120} value={organizationName} onBlur={() => setOrganizationNameTouched(true)} onChange={(event) => { setOrganizationName(event.target.value); setOrganizationNameTouched(true); setError(""); }} aria-invalid={Boolean(organizationError) || undefined} aria-describedby={organizationError ? "public-register-organization-error" : undefined} placeholder="Organization name" />
-            {organizationName && <button type="button" aria-label="Clear organization name" onClick={() => { setOrganizationName(""); setOrganizationNameTouched(true); setError(""); }}><X size={16} aria-hidden="true" /></button>}
-          </span>
-          {organizationError && <small className="public-auth-field-error" id="public-register-organization-error" role="status">{organizationError}</small>}
         </label>
         <div className="public-auth-register-phone-group">
           <label className="public-auth-register-field public-auth-register-country-field">Country
@@ -772,9 +761,9 @@ function AuthPage({ mode, initialView = mode }: AuthPageProps) {
   return <>
     <AuthFrame
       mode={viewMode}
-      loginLanding={view === "login" || view === "email-mfa"}
-      emailMfa={view === "email-mfa"}
-      flowView={view !== "login" && view !== "register" && view !== "email-mfa"}
+      loginLanding={view === "login" || view === "email-mfa" || view === "verify"}
+      emailMfa={view === "email-mfa" || view === "verify"}
+      flowView={view !== "login" && view !== "register" && view !== "email-mfa" && view !== "verify"}
       flowFooterInsideLayout={view === "forgot" || view === "reset"}
       flowFooterAfterPanel={view === "reset" ? <p className="public-auth-reset-back"><a href="/login">←&nbsp; Back to Login</a></p> : undefined}
       passwordReset={view === "reset"}

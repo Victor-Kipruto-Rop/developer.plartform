@@ -78,10 +78,10 @@ export function SessionsPage() {
       {error && <p className="notification-alert" role="alert">{error}</p>}
       {notice && <p className="notification-success" role="status">{notice}</p>}
       <section className="stats-grid stats-grid--three">
-        <article className="stat-card"><div className="stat-card-top"><span>Active sessions</span><MonitorSmartphone size={17} /></div><div className="stat-value">{loading && sessions.length === 0 ? "—" : sessions.length}</div><div className="stat-foot">{error || "Current sessions returned by the backend"}</div></article>
+        <article className="stat-card"><div className="stat-card-top"><span>Active sessions</span><MonitorSmartphone size={17} /></div><div className="stat-value">{loading && sessions.length === 0 ? "—" : sessions.length}</div><div className="stat-foot">{error || "Current sessions returned by the system"}</div></article>
       </section>
       <section className="panel table-panel">
-        <div className="panel-heading"><div><h2>Account sessions</h2><p>Revoke any session except the current one.</p></div><span className="table-tag">BACKEND</span></div>
+        <div className="panel-heading"><div><h2>Account sessions</h2><p>Revoke any session except the current one.</p></div><span className="table-tag">SYSTEM</span></div>
         {loading && sessions.length === 0
           ? <p className="security-empty-state">Loading account sessions…</p>
           : sessions.length === 0

@@ -41,7 +41,7 @@ const limitFields: { key: LimitKey; label: string; min: number; max: number; uni
 ];
 
 function errorMessage(error: unknown) {
-  return getUserMessage(error, "The backend request failed.");
+  return getUserMessage(error, "The system request failed.");
 }
 
 export function SandboxSettingsPage() {
@@ -150,7 +150,7 @@ export function SandboxSettingsPage() {
       <PageHeader
         eyebrow="CONFIG"
         title="Sandbox settings"
-        description="View and update quotas returned by the backend for a saved sandbox instance."
+        description="View and update quotas returned by the system for a saved sandbox instance."
         action={<button className="button button--secondary" type="button" disabled={loadingSandboxes || loadingLimits || saving} onClick={() => void refresh()}><RotateCw size={14} />Refresh</button>}
       />
 
@@ -158,13 +158,13 @@ export function SandboxSettingsPage() {
       {notice && <p className="security-feedback" role="status">{notice}</p>}
 
       {loadingSandboxes
-        ? <section className="panel"><p className="security-empty-state">Loading sandbox instances from the backend…</p></section>
+        ? <section className="panel"><p className="security-empty-state">Loading sandbox instances from the system…</p></section>
         : sandboxes.length === 0
           ? <section className="panel organization-live-empty" role={error ? "alert" : "status"}>
             <Settings2 size={18} />
             <div>
               <strong>{error ? "Sandbox settings are unavailable." : "No sandbox instances were returned."}</strong>
-              <p>{error ? "The API request failed; no default limits are displayed." : "Create a sandbox in the Sandbox laboratory before viewing or changing its backend-managed limits."}</p>
+              <p>{error ? "The API request failed; no default limits are displayed." : "Create a sandbox in the Sandbox laboratory before viewing or changing its system-managed limits."}</p>
             </div>
           </section>
           : <>
@@ -179,10 +179,10 @@ export function SandboxSettingsPage() {
 
             <section className="panel security-controls-panel">
               <div className="panel-heading">
-                <div><h2>Sandbox quotas</h2><p>{selectedSandbox ? `${selectedSandbox.name} · ${selectedSandbox.status}` : "Values are fetched from the backend for the selected sandbox."}</p></div>
+                <div><h2>Sandbox quotas</h2><p>{selectedSandbox ? `${selectedSandbox.name} · ${selectedSandbox.status}` : "Values are fetched from the system for the selected sandbox."}</p></div>
               </div>
               {loadingLimits
-                ? <p className="security-empty-state">Loading backend-configured sandbox limits…</p>
+                ? <p className="security-empty-state">Loading system-configured sandbox limits…</p>
                 : limits
                   ? <ValidatedForm className="settings-groups" onSubmit={(event) => void saveLimits(event)}>
                     {limitFields.map((field) => (

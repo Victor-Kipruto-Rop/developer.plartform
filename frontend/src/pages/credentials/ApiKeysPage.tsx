@@ -541,7 +541,7 @@ export function ApiKeysPage({ onNavigate }: { onNavigate: (page: PageId, apiKeyI
     );
   }
 
-  if (!isAuthenticated) return <><PageHeader eyebrow="CREDENTIALS" title="API keys" description="Sign in to load and manage real API credentials." /><section className="panel backend-capability-state"><span className="backend-capability-icon"><KeyRound size={18} /></span><h2>Authentication required</h2><p>API key data is private. Sign in to view keys returned by the backend; no example credentials are displayed.</p></section></>;
+  if (!isAuthenticated) return <><PageHeader eyebrow="CREDENTIALS" title="API keys" description="Sign in to load and manage real API credentials." /><section className="panel backend-capability-state"><span className="backend-capability-icon"><KeyRound size={18} /></span><h2>Authentication required</h2><p>API key data is private. Sign in to view keys returned by the system; no example credentials are displayed.</p></section></>;
 
   return (
     <>
@@ -701,7 +701,7 @@ export function ApiKeysPage({ onNavigate }: { onNavigate: (page: PageId, apiKeyI
                   </div>
                   <div>
                     <label className="field-label" htmlFor="credential-name">Key name</label>
-                    <input id="credential-name" className="field-control" value={name} onChange={(event) => setName(event.target.value)} minLength={2} maxLength={120} placeholder="e.g. Payments backend" required />
+                    <input id="credential-name" className="field-control" value={name} onChange={(event) => setName(event.target.value)} minLength={2} maxLength={120} placeholder="e.g. Payments system" required />
                   </div>
                   <div>
                     <label className="field-label" htmlFor="credential-expiration">Expiration</label>

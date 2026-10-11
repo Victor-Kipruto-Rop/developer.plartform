@@ -70,7 +70,7 @@ export function AuditLogsPage() {
       />
       {error && <p className="notification-alert" role="alert">{error}</p>}
       <section className="panel table-panel">
-        <div className="panel-heading"><div><h2>Audit trail</h2><p>{events.length} records on this page · {total} total</p></div><span className="table-tag">BACKEND</span></div>
+        <div className="panel-heading"><div><h2>Audit trail</h2><p>{events.length} records on this page · {total} total</p></div><span className="table-tag">SYSTEM</span></div>
         {loading && events.length === 0
           ? <p className="security-empty-state">Loading audit events…</p>
           : events.length === 0

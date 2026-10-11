@@ -175,7 +175,7 @@ export function NotificationSettingsPage({ standalone = false }: { standalone?: 
                   </div>
                 ))}
               </div>
-              <div className="notification-settings-footer"><p>Changes are saved to your account on the backend.</p><button className="button button--primary" type="button" disabled={saving || !isDirty} onClick={() => void savePreferences()}><Check size={14} />{saving ? "Saving…" : "Save preferences"}</button></div>
+              <div className="notification-settings-footer"><p>Changes are saved to your account on the system.</p><button className="button button--primary" type="button" disabled={saving || !isDirty} onClick={() => void savePreferences()}><Check size={14} />{saving ? "Saving…" : "Save preferences"}</button></div>
             </>
           )}
     </section>

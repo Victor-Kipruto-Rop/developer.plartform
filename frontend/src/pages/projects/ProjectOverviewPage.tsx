@@ -160,7 +160,7 @@ export function ProjectOverviewPage({ onNavigate }: { onNavigate: (page: PageId)
               </article>
             ))}{!environmentError && environments.length === 0 && <div className="project-directory-empty"><FolderKanban size={22} /><strong>No environments yet</strong><span>Create one from the environments page.</span><button className="text-button" type="button" onClick={() => onNavigate("environments")}>Open environments</button></div>}</div>
           </section>
-          <p className="usage-data-note">Project configuration and operational activity are shown only where supported by connected backend endpoints.</p>
+          <p className="usage-data-note">Project configuration and operational activity are shown only where supported by connected system services.</p>
         </>
       )}
     </>

@@ -12,10 +12,6 @@ import javax.crypto.SecretKey;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Qualifier;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.mail.MailException;
-import org.springframework.mail.SimpleMailMessage;
-import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.annotation.Propagation;
@@ -54,23 +50,20 @@ public class EmailVerificationService {
     private final SecretKey credentialKey;
     private final SecureRandom random = new SecureRandom();
     private final Clock clock;
-    private final JavaMailSender mailSender;
-    private final String fromEmail;
+    private final AccountEmailDeliveryService emailDelivery;
     private final int maxAttempts;
 
     public EmailVerificationService(
             UserAccountRepository accountRepository,
             @Qualifier("credentialHmacKey") SecretKey credentialKey,
             Clock clock,
-            JavaMailSender mailSender,
             ApplicationProperties properties,
-            @Value("${pesaguard.identity.from-email}") String fromEmail) {
+            AccountEmailDeliveryService emailDelivery) {
         this.accountRepository = accountRepository;
         this.credentialKey = credentialKey;
         this.clock = clock;
-        this.mailSender = mailSender;
+        this.emailDelivery = emailDelivery;
         this.maxAttempts = properties.security().accountLoginFailureLimit();
-        this.fromEmail = fromEmail;
     }
 
     /** Issues a single-use six-digit code and delivers it by email. */
@@ -83,23 +76,7 @@ public class EmailVerificationService {
         // The token itself must not appear in a log. The account id is enough to
         // correlate the send with the row.
         log.info("email verification issued accountId={}", account.getId());
-        SimpleMailMessage message = new SimpleMailMessage();
-        message.setFrom(fromEmail);
-        message.setTo(account.getEmail());
-        message.setSubject("Your PesaGuard verification code");
-        message.setText("Hello " + account.getDisplayName()
-                + ",\n\nYour PesaGuard Developer Platform verification code is: " + code
-                + "\n\nIt expires in 10 minutes. If you did not request this code, you can ignore this email.");
-        try {
-            mailSender.send(message);
-        } catch (MailException exception) {
-            log.error("Email verification delivery failed for accountId={} ({})",
-                    account.getId(), exception.getClass().getSimpleName());
-            throw new BusinessException(
-                    org.springframework.http.HttpStatus.SERVICE_UNAVAILABLE,
-                    "EMAIL_DELIVERY_FAILED",
-                    "We could not deliver the verification email. Please try again later.");
-        }
+        emailDelivery.sendEmailVerificationCode(account.getEmail(), code);
         return challenge(issuedAt);
     }
 
@@ -276,22 +253,7 @@ public class EmailVerificationService {
         String code = String.format(java.util.Locale.ROOT, "%06d", random.nextInt(CODE_BOUND));
         account.issueLoginMfa(challengeId, organizationId, hashLoginMfaCode(account.getId(), code), now);
         accountRepository.saveAndFlush(account);
-        SimpleMailMessage message = new SimpleMailMessage();
-        message.setFrom(fromEmail);
-        message.setTo(account.getEmail());
-        message.setSubject("Your PesaGuard sign-in verification code");
-        message.setText("Hello " + account.getDisplayName()
-                + ",\n\nYour PesaGuard sign-in verification code is: " + code
-                + "\n\nIt expires in 10 minutes. If you did not try to sign in, change your password and ignore this email.");
-        try {
-            mailSender.send(message);
-        } catch (MailException exception) {
-            log.error("Login MFA delivery failed for accountId={} ({})",
-                    account.getId(), exception.getClass().getSimpleName());
-            throw new BusinessException(HttpStatus.SERVICE_UNAVAILABLE,
-                    "EMAIL_DELIVERY_FAILED",
-                    "We could not deliver the sign-in verification email. Please try again later.");
-        }
+        emailDelivery.sendLoginEmailCode(account.getEmail(), code);
         log.info("login email MFA issued accountId={}", account.getId());
         return loginMfaChallenge(account);
     }

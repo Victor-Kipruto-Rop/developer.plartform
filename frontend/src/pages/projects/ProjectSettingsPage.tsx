@@ -95,7 +95,7 @@ export function ProjectSettingsPage() {
       {error && <p className="workflow-error" role="alert">{error}</p>}
       {message && <p className="workflow-success" role="status">{message}</p>}
       {loading && <p className="workflow-hint" role="status">Loading project settings…</p>}
-      {settings && <section className="premium-context-banner"><span className="premium-icon-tile"><Save size={18} /></span><div><span className="section-eyebrow">CONFIGURATION CONTROL</span><strong>Project settings are saved to the selected backend project.</strong><small>Last changed {updatedAt}{settings.updatedBy ? ` by ${settings.updatedBy}` : ""}</small></div><span className="premium-live-mark"><i />PERSISTED</span></section>}
+      {settings && <section className="premium-context-banner"><span className="premium-icon-tile"><Save size={18} /></span><div><span className="section-eyebrow">CONFIGURATION CONTROL</span><strong>Project settings are saved to the selected project.</strong><small>Last changed {updatedAt}{settings.updatedBy ? ` by ${settings.updatedBy}` : ""}</small></div><span className="premium-live-mark"><i />PERSISTED</span></section>}
       {settings && (
         <section className="panel settings-group">
           <div className="settings-group-header">

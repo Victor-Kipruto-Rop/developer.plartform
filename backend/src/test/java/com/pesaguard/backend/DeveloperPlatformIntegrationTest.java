@@ -3,6 +3,9 @@ package com.pesaguard.backend;
 import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.hasSize;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
@@ -13,16 +16,22 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.Base64;
+import java.util.List;
+import java.util.Properties;
 import java.util.UUID;
 
+import jakarta.mail.Part;
+import jakarta.mail.Multipart;
+import jakarta.mail.Session;
+import jakarta.mail.internet.MimeMessage;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.http.MediaType;
-import org.springframework.mail.SimpleMailMessage;
 import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
@@ -36,6 +45,13 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import com.pesaguard.backend.organization.application.InvitationEmailDeliveryScheduler;
+import com.pesaguard.backend.member.infrastructure.AccountDataPurgeRepository;
+import com.pesaguard.backend.member.domain.UserAccount;
+import com.pesaguard.backend.member.infrastructure.UserAccountRepository;
+import com.pesaguard.backend.organization.domain.Organization;
+import com.pesaguard.backend.organization.domain.OrganizationMembership;
+import com.pesaguard.backend.organization.infrastructure.OrganizationMembershipRepository;
+import com.pesaguard.backend.organization.infrastructure.OrganizationRepository;
 
 @Testcontainers(disabledWithoutDocker = true)
 @SpringBootTest
@@ -59,7 +75,9 @@ class DeveloperPlatformIntegrationTest {
         registry.add("pesaguard.security.audit-hmac-key", () -> AUDIT_KEY);
         registry.add("pesaguard.security.allowed-origins", () -> "https://developers.pesaguard.victorkipruto.com");
         registry.add("pesaguard.security.registration-enabled", () -> "true");
+        registry.add("pesaguard.runtime.maintenance-mode", () -> "false");
         registry.add("pesaguard.organization.invitation-email-dispatch-ms", () -> "3600000");
+        registry.add("pesaguard.ratelimit.store", () -> "in-memory");
     }
 
     @Test
@@ -82,6 +100,64 @@ class DeveloperPlatformIntegrationTest {
                         .content("{\"email\":\"" + email + "\",\"password\":\"" + TEST_PASSWORD + "\"}"))
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.error.code").value("LOGIN_EMAIL_MFA_REQUIRED"));
+    }
+
+    @Test
+    void suggestionFeedbackApiIsRemoved() throws Exception {
+        String token = register(uniqueEmail());
+        mockMvc.perform(get("/api/v1/feedback")
+                        .header("Authorization", "Bearer " + token)
+                        .param("page", "0")
+                        .param("pageSize", "20"))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void accountPurgeRemovesSharedWorkspaceHistoryButKeepsOtherMemberAccount() {
+        String suffix = UUID.randomUUID().toString().replace("-", "");
+        UserAccount owner = UserAccount.create("owner-" + suffix + "@example.com",
+                "owner" + suffix.substring(0, 12), "Workspace owner", "unusable-password-hash");
+        UserAccount member = UserAccount.create("member-" + suffix + "@example.com",
+                "member" + suffix.substring(0, 12), "Workspace member", "unusable-password-hash");
+        userAccountRepository.saveAndFlush(owner);
+        userAccountRepository.saveAndFlush(member);
+        Organization organization = Organization.create(
+                "Purge workspace", "purge-" + suffix, owner.getId(), java.time.Instant.now());
+        organizationRepository.saveAndFlush(organization);
+        organizationMembershipRepository.saveAndFlush(OrganizationMembership.owner(organization, owner));
+        organizationMembershipRepository.saveAndFlush(
+                OrganizationMembership.member(organization, member,
+                        com.pesaguard.backend.organization.domain.OrganizationRole.DEVELOPER));
+        jdbcTemplate.update("""
+                insert into audit_events (
+                    id, organization_id, sequence_number, actor_user_id, action, resource_type,
+                    resource_id, request_id, correlation_id, metadata, previous_hash, event_hash, created_at
+                ) values (?, ?, 1, ?, 'test.event', 'organization', ?, ?, ?, '{}', ?, ?, now())
+                """,
+                UUID.randomUUID(), organization.getId(), owner.getId(), organization.getId().toString(),
+                UUID.randomUUID(), UUID.randomUUID(), "0".repeat(64), "1".repeat(64));
+        assertThat(accountDataPurgeRepository.purge(owner.getId())).isFalse();
+        owner.requestDeletion(java.time.Instant.now().minus(java.time.Duration.ofDays(31)));
+        userAccountRepository.saveAndFlush(owner);
+
+        assertThat(jdbcTemplate.queryForObject(
+                "select count(*) from audit_events where organization_id = ?",
+                Long.class, organization.getId())).isPositive();
+
+        assertThat(accountDataPurgeRepository.purge(owner.getId())).isTrue();
+
+        assertThat(jdbcTemplate.queryForObject(
+                "select count(*) from users where id = ?", Long.class, owner.getId())).isZero();
+        assertThat(jdbcTemplate.queryForObject(
+                "select count(*) from organizations where id = ?", Long.class, organization.getId())).isZero();
+        assertThat(jdbcTemplate.queryForObject(
+                "select count(*) from organization_memberships where organization_id = ?",
+                Long.class, organization.getId())).isZero();
+        assertThat(jdbcTemplate.queryForObject(
+                "select count(*) from audit_events where organization_id = ?",
+                Long.class, organization.getId())).isZero();
+        assertThat(jdbcTemplate.queryForObject(
+                "select count(*) from users where id = ?", Long.class, member.getId())).isEqualTo(1);
     }
 
     @Test
@@ -164,7 +240,7 @@ class DeveloperPlatformIntegrationTest {
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.error.code").value("EMAIL_NOT_VERIFIED"));
 
-        String code = latestEmailCode(email, "code is:");
+        String code = latestEmailCode(email);
         String response = mockMvc.perform(post("/api/v1/auth/verify-email/complete-registration")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"email\":\"" + email + "\",\"code\":\"" + code
@@ -184,7 +260,7 @@ class DeveloperPlatformIntegrationTest {
     void registrationVerificationCompletesInitialSessionButLaterSignInsStillRequireMfa() throws Exception {
         String email = uniqueEmail();
         registerUnverified(email);
-        String code = latestEmailCode(email, "code is:");
+        String code = latestEmailCode(email);
 
         String response = mockMvc.perform(post("/api/v1/auth/verify-email/complete-registration")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -217,6 +293,18 @@ class DeveloperPlatformIntegrationTest {
     JdbcTemplate jdbcTemplate;
 
     @Autowired
+    AccountDataPurgeRepository accountDataPurgeRepository;
+
+    @Autowired
+    UserAccountRepository userAccountRepository;
+
+    @Autowired
+    OrganizationRepository organizationRepository;
+
+    @Autowired
+    OrganizationMembershipRepository organizationMembershipRepository;
+
+    @Autowired
     InvitationEmailDeliveryScheduler invitationEmailDeliveryScheduler;
 
     /**
@@ -230,6 +318,19 @@ class DeveloperPlatformIntegrationTest {
      */
     @MockitoBean
     JavaMailSender mailSender;
+
+    private final List<MimeMessage> sentEmails = new ArrayList<>();
+
+    @BeforeEach
+    void captureEmailsWithoutSending() {
+        sentEmails.clear();
+        when(mailSender.createMimeMessage()).thenAnswer(
+                invocation -> new MimeMessage(Session.getInstance(new Properties())));
+        doAnswer(invocation -> {
+            sentEmails.add(invocation.getArgument(0));
+            return null;
+        }).when(mailSender).send(any(MimeMessage.class));
+    }
 
     @Test
     void registrationCreatesTenantScopedResourcesAndOneTimeApiKey() throws Exception {
@@ -289,7 +390,7 @@ class DeveloperPlatformIntegrationTest {
                 "select name from organizations where owner_user_id = (select id from users where email = ?)",
                 String.class, email);
         assertThat(username).isNotBlank();
-        assertThat(workspaceName).isEqualTo("My Workspace");
+        assertThat(workspaceName).isEqualTo("Acme test-" + email.substring("test-".length(), email.indexOf('@')));
 
         confirmEmail(email);
         String token = login(username);
@@ -309,7 +410,8 @@ class DeveloperPlatformIntegrationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"email\":\"" + updatedUsername
                                 + "\",\"password\":\"" + TEST_PASSWORD + "\"}"))
-                .andExpect(status().isOk());
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.error.code").value("LOGIN_EMAIL_MFA_REQUIRED"));
     }
 
     @Test
@@ -686,7 +788,7 @@ class DeveloperPlatformIntegrationTest {
                 .andExpect(jsonPath("$.error.code").value("LOGIN_EMAIL_MFA_REQUIRED"))
                 .andReturn().getResponse().getContentAsString();
         String challengeId = jsonValue(challengeResponse, "loginChallengeId");
-        String code = latestEmailCode(email, "sign-in verification code is:");
+        String code = latestEmailCode(email);
         String response = mockMvc.perform(post("/api/v1/auth/login/email-mfa/verify")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"challengeId\":\"" + challengeId + "\",\"code\":\"" + code + "\"}"))
@@ -698,7 +800,7 @@ class DeveloperPlatformIntegrationTest {
 
     /** Completes the real verification flow using the OTP from the captured email. */
     private void confirmEmail(String email) throws Exception {
-        String code = latestEmailCode(email, "code is:");
+        String code = latestEmailCode(email);
 
         mockMvc.perform(post("/api/v1/auth/verify-email")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -706,23 +808,53 @@ class DeveloperPlatformIntegrationTest {
                 .andExpect(status().isOk());
     }
 
-    private String latestEmailCode(String email, String codeLabel) {
-        ArgumentCaptor<SimpleMailMessage> sent = ArgumentCaptor.forClass(SimpleMailMessage.class);
-        org.mockito.Mockito.verify(mailSender, org.mockito.Mockito.atLeastOnce()).send(sent.capture());
-
-        return sent.getAllValues().stream()
-                .filter(message -> message.getTo() != null
-                        && java.util.Arrays.asList(message.getTo()).contains(email))
-                .map(SimpleMailMessage::getText)
-                .filter(text -> text.contains(codeLabel))
+    private String latestEmailCode(String email) {
+        return sentEmails.stream()
+                .filter(message -> isSentTo(message, email))
+                .map(DeveloperPlatformIntegrationTest::plainTextContent)
+                .filter(text -> java.util.regex.Pattern.compile("(?<!\\d)(\\d{6})(?!\\d)").matcher(text).find())
                 .map(text -> {
                     java.util.regex.Matcher matcher = java.util.regex.Pattern
-                            .compile(java.util.regex.Pattern.quote(codeLabel) + " ([0-9]{6})").matcher(text);
+                            .compile("(?<!\\d)(\\d{6})(?!\\d)").matcher(text);
                     if (!matcher.find()) throw new AssertionError("Email did not contain a six-digit code");
                     return matcher.group(1);
                 })
                 .reduce((first, second) -> second)
                 .orElseThrow(() -> new AssertionError("No matching verification email was sent to " + email));
+    }
+
+    private static boolean isSentTo(MimeMessage message, String email) {
+        try {
+            jakarta.mail.Address[] recipients = message.getRecipients(jakarta.mail.Message.RecipientType.TO);
+            return recipients != null && java.util.Arrays.stream(recipients)
+                    .anyMatch(recipient -> recipient.toString().toLowerCase(java.util.Locale.ROOT)
+                            .contains(email.toLowerCase(java.util.Locale.ROOT)));
+        } catch (jakarta.mail.MessagingException exception) {
+            throw new AssertionError("Could not read captured email recipients", exception);
+        }
+    }
+
+    private static String plainTextContent(MimeMessage message) {
+        try {
+            StringBuilder content = new StringBuilder();
+            appendTextParts(message, content);
+            return content.toString();
+        } catch (Exception exception) {
+            throw new AssertionError("Could not read captured email content", exception);
+        }
+    }
+
+    private static void appendTextParts(Part part, StringBuilder content) throws Exception {
+        if (part.isMimeType("text/*")) {
+            content.append(part.getContent()).append('\n');
+            return;
+        }
+        if (part.isMimeType("multipart/*")) {
+            Multipart multipart = (Multipart) part.getContent();
+            for (int index = 0; index < multipart.getCount(); index++) {
+                appendTextParts(multipart.getBodyPart(index), content);
+            }
+        }
     }
 
     private String createProject(String token) throws Exception {
@@ -784,12 +916,9 @@ class DeveloperPlatformIntegrationTest {
     }
 
     private String invitationTokenFromEmail(String email) {
-        ArgumentCaptor<SimpleMailMessage> sent = ArgumentCaptor.forClass(SimpleMailMessage.class);
-        org.mockito.Mockito.verify(mailSender, org.mockito.Mockito.atLeastOnce()).send(sent.capture());
-        return sent.getAllValues().stream()
-                .filter(message -> message.getTo() != null
-                        && java.util.Arrays.asList(message.getTo()).contains(email))
-                .map(SimpleMailMessage::getText)
+        return sentEmails.stream()
+                .filter(message -> isSentTo(message, email))
+                .map(DeveloperPlatformIntegrationTest::plainTextContent)
                 .filter(text -> text.contains("/accept-invitation?token="))
                 .map(text -> {
                     java.util.regex.Matcher matcher = java.util.regex.Pattern

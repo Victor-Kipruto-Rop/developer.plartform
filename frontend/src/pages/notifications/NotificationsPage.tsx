@@ -153,7 +153,7 @@ export function NotificationsPage() {
 
       <section className="notification-inbox-summary" aria-label="Notification summary">
         <article className="panel notification-summary-card"><span className="notification-summary-icon"><Bell size={16} /></span><div><small>INBOX</small><strong>{totalItems}</strong><span>saved notifications</span></div></article>
-        <article className="panel notification-summary-card"><span className="notification-summary-icon"><CheckCheck size={16} /></span><div><small>UNREAD</small><strong>{unreadCount}</strong><span>from backend</span></div></article>
+        <article className="panel notification-summary-card"><span className="notification-summary-icon"><CheckCheck size={16} /></span><div><small>UNREAD</small><strong>{unreadCount}</strong><span>from the system</span></div></article>
         <article className="panel notification-summary-card"><span className="notification-summary-icon"><Filter size={16} /></span><div><small>CATEGORIES</small><strong>{categories.length}</strong><span>with saved records</span></div></article>
       </section>
 
@@ -197,7 +197,7 @@ export function NotificationsPage() {
                 </article>
               );
             })}
-          {!loading && visibleItems.length === 0 && <div className="notification-empty"><Bell size={20} /><strong>{totalItems ? "No notifications match" : "No notifications yet"}</strong><span>{totalItems ? "Try another filter or search term." : "Notifications will appear here when backend events are recorded."}</span></div>}
+          {!loading && visibleItems.length === 0 && <div className="notification-empty"><Bell size={20} /><strong>{totalItems ? "No notifications match" : "No notifications yet"}</strong><span>{totalItems ? "Try another filter or search term." : "Notifications will appear here when system events are recorded."}</span></div>}
         </div>
         <div className="notification-inbox-footer"><span>Page {page + 1} of {Math.max(1, Math.ceil(totalItems / 50))} · {totalItems} notifications</span><div><button className="button button--secondary" type="button" disabled={loading || page === 0} onClick={() => setPage((current) => Math.max(0, current - 1))}>Previous</button><button className="button button--secondary" type="button" disabled={loading || (page + 1) * 50 >= totalItems} onClick={() => setPage((current) => current + 1)}>Next</button></div></div>
       </section>

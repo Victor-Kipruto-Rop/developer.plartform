@@ -18,7 +18,6 @@ import java.util.UUID;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.springframework.security.crypto.password.PasswordEncoder;
 
 import com.pesaguard.backend.audit.application.AuditService;
 import com.pesaguard.backend.common.exception.BusinessException;
@@ -29,11 +28,10 @@ import com.pesaguard.backend.credentials.api.ApiKeyStatus;
 import com.pesaguard.backend.member.domain.UserAccount;
 import com.pesaguard.backend.member.domain.UserStatus;
 import com.pesaguard.backend.member.api.AccountLifecycleView;
+import com.pesaguard.backend.member.infrastructure.AccountDataPurgeRepository;
 import com.pesaguard.backend.member.infrastructure.UserAccountRepository;
-import com.pesaguard.backend.organization.domain.MembershipStatus;
 import com.pesaguard.backend.organization.domain.OrganizationMembership;
 import com.pesaguard.backend.organization.domain.OrganizationRole;
-import com.pesaguard.backend.organization.infrastructure.OrganizationMembershipHistoryRepository;
 import com.pesaguard.backend.organization.infrastructure.OrganizationMembershipRepository;
 import com.pesaguard.backend.security.authentication.MfaService;
 import com.pesaguard.backend.security.sessions.RefreshTokenService;
@@ -46,8 +44,7 @@ class UserLifecycleServiceTest {
 
     private final UserAccountRepository accounts = mock(UserAccountRepository.class);
     private final OrganizationMembershipRepository memberships = mock(OrganizationMembershipRepository.class);
-    private final OrganizationMembershipHistoryRepository membershipHistory =
-            mock(OrganizationMembershipHistoryRepository.class);
+    private final AccountDataPurgeRepository accountDataPurge = mock(AccountDataPurgeRepository.class);
     private final ApiKeyRepository apiKeys = mock(ApiKeyRepository.class);
     private final PasswordRecoveryService passwordRecovery = mock(PasswordRecoveryService.class);
     private final MfaService mfa = mock(MfaService.class);
@@ -55,24 +52,23 @@ class UserLifecycleServiceTest {
     private final RefreshTokenService refreshTokens = mock(RefreshTokenService.class);
     private final ApiKeyService apiKeyService = mock(ApiKeyService.class);
     private final AuditService audit = mock(AuditService.class);
-    private final PasswordEncoder passwordEncoder = mock(PasswordEncoder.class);
+    private final AccountEmailDeliveryService emailDelivery = mock(AccountEmailDeliveryService.class);
 
     private UserLifecycleService service;
     private UserAccount account;
 
     @BeforeEach
     void setUp() {
-        service = new UserLifecycleService(accounts, memberships, membershipHistory, apiKeys,
+        service = new UserLifecycleService(accounts, memberships, accountDataPurge, apiKeys,
                 passwordRecovery, mfa, sessions, refreshTokens, apiKeyService, audit,
-                passwordEncoder,
+                emailDelivery,
                 Clock.fixed(NOW, ZoneOffset.UTC));
         account = UserAccount.create("person@example.com", "person", "Person", "password-hash");
         when(accounts.findByIdForUpdate(account.getId())).thenReturn(Optional.of(account));
         when(accounts.findById(account.getId())).thenReturn(Optional.of(account));
         when(mfa.isEnabled(account.getId())).thenReturn(false);
-        when(passwordEncoder.encode(any())).thenReturn("encoded-unusable-password");
         when(memberships.existsByUserIdAndRole(account.getId(), OrganizationRole.OWNER)).thenReturn(false);
-        when(memberships.findAllByUserIdForUpdate(account.getId())).thenReturn(List.of());
+        when(accountDataPurge.purge(account.getId())).thenReturn(true);
         when(apiKeys.findByCreatedByOrderByCreatedAtDesc(account.getId())).thenReturn(List.of());
     }
 
@@ -91,13 +87,11 @@ class UserLifecycleServiceTest {
     }
 
     @Test
-    void lifecycleReportsOwnershipThatWouldBlockDeletionBeforeARequest() {
-        when(memberships.existsByUserIdAndRole(account.getId(), OrganizationRole.OWNER)).thenReturn(true);
-
+    void lifecycleReturnsTheDeletionScheduleWithoutOwnershipBlocking() {
         AccountLifecycleView lifecycle = service.lifecycle(account.getId());
 
         assertThat(lifecycle.status()).isEqualTo(UserStatus.ACTIVE);
-        assertThat(lifecycle.deletionBlockedByOrganizationOwnership()).isTrue();
+        assertThat(lifecycle.deletionRequestedAt()).isNull();
     }
 
     @Test
@@ -114,24 +108,49 @@ class UserLifecycleServiceTest {
     }
 
     @Test
-    void deletionIsBlockedWhileTheUserOwnsAnyOrganization() {
-        when(memberships.existsByUserIdAndRole(account.getId(), OrganizationRole.OWNER)).thenReturn(true);
-        OrganizationMembership ownerMembership = mock(OrganizationMembership.class);
-        when(ownerMembership.getRole()).thenReturn(OrganizationRole.OWNER);
-        when(memberships.findAllByUserIdForUpdate(account.getId())).thenReturn(List.of(ownerMembership));
+    void pauseSetsSupportedExpiryRevokesCredentialsAndSendsEmail() {
+        service.deactivate(account.getId(), ORGANIZATION_ID, "current", null, 7);
 
-        assertThatThrownBy(() -> service.requestDeletion(account.getId(), ORGANIZATION_ID, "current", null))
-                .isInstanceOf(BusinessException.class)
-                .extracting(exception -> ((BusinessException) exception).code())
-                .isEqualTo("ORGANIZATION_OWNERSHIP_TRANSFER_REQUIRED");
-        assertThat(account.getStatus()).isEqualTo(UserStatus.ACTIVE);
+        assertThat(account.getStatus()).isEqualTo(UserStatus.DEACTIVATED);
+        assertThat(account.getDeactivatedUntil()).isEqualTo(NOW.plusSeconds(7 * 24 * 60 * 60L));
+        verify(sessions).revokeActiveByUserId(account.getId());
+        verify(refreshTokens).revokeAllForUser(account.getId(), "ACCOUNT_DEACTIVATED");
+        verify(emailDelivery).sendAccountPaused(account.getEmail(), account.getDeactivatedUntil());
+    }
+
+    @Test
+    void pauseRejectsUnsupportedDuration() {
+        assertThatThrownBy(() -> service.deactivate(account.getId(), ORGANIZATION_ID, "current", null, 14))
+                .isInstanceOf(BusinessException.class);
         verify(accounts, never()).save(account);
-        verify(sessions, never()).revokeActiveByUserId(account.getId());
+    }
+
+    @Test
+    void expiredPauseAutomaticallyRestoresAccountAndNotifiesByEmail() {
+        Instant expiredAt = NOW.minusSeconds(60);
+        account.deactivate(NOW.minusSeconds(8 * 24 * 60 * 60L), expiredAt);
+        when(accounts.findPausedAccountsDue(UserStatus.DEACTIVATED, NOW)).thenReturn(List.of(account));
+
+        int restored = service.reactivateDueAccounts();
+
+        assertThat(restored).isEqualTo(1);
+        assertThat(account.getStatus()).isEqualTo(UserStatus.ACTIVE);
+        assertThat(account.getDeactivatedUntil()).isNull();
+        verify(emailDelivery).sendAccountReactivated(account.getEmail());
+    }
+
+    @Test
+    void accountOwnerCanRequestDeletion() {
+        when(memberships.existsByUserIdAndRole(account.getId(), OrganizationRole.OWNER)).thenReturn(true);
+
+        assertThat(service.requestDeletion(account.getId(), ORGANIZATION_ID, "current", null).getStatus())
+                .isEqualTo(UserStatus.PENDING_DELETION);
+        verify(accounts).save(account);
     }
 
     @Test
     void deactivationStopsTheAccountAndRevokesPersonalCredentials() {
-        service.deactivate(account.getId(), ORGANIZATION_ID, "current", null);
+        service.deactivate(account.getId(), ORGANIZATION_ID, "current", null, 30);
 
         assertThat(account.getStatus()).isEqualTo(UserStatus.DEACTIVATED);
         verify(sessions).revokeActiveByUserId(account.getId());
@@ -142,25 +161,19 @@ class UserLifecycleServiceTest {
     }
 
     @Test
-    void deletionDoesNotCompleteBeforeGraceAndAnonymizesAfterward() {
+    void deletionDoesNotCompleteBeforeGraceAndPurgesAfterward() {
         account.requestDeletion(NOW);
         assertThat(service.completeDeletion(account.getId())).isFalse();
 
-        service = new UserLifecycleService(accounts, memberships, membershipHistory, apiKeys,
+        service = new UserLifecycleService(accounts, memberships, accountDataPurge, apiKeys,
                 passwordRecovery, mfa, sessions, refreshTokens, apiKeyService, audit,
-                passwordEncoder,
+                emailDelivery,
                 Clock.fixed(NOW.plus(UserLifecycleService.DELETION_GRACE_PERIOD), ZoneOffset.UTC));
-        when(passwordEncoder.encode(any())).thenReturn("encoded-unusable-password");
-        when(memberships.findAllByUserId(account.getId())).thenReturn(List.of());
 
         assertThat(service.completeDeletion(account.getId())).isTrue();
-        assertThat(account.getStatus()).isEqualTo(UserStatus.DELETED);
-        assertThat(account.getDisplayName()).isEqualTo("Deleted user");
-        assertThat(account.getEmail()).endsWith("@deleted.invalid");
-        assertThat(account.getUsername()).startsWith("deleted-");
-        assertThat(account.getPasswordHash()).isEqualTo("encoded-unusable-password");
+        verify(accountDataPurge).purge(account.getId());
+        verify(emailDelivery).sendAccountDeleted(account.getEmail());
         verify(sessions).revokeActiveByUserId(account.getId());
-        verify(accounts).save(account);
     }
 
     @Test
@@ -190,51 +203,16 @@ class UserLifecycleServiceTest {
     }
 
     @Test
-    void completionRemainsPendingIfOwnershipAppearsDuringTheGracePeriod() {
+    void rejectsPurgeWhenDatabaseSaysDeletionIsNotDue() {
         account.requestDeletion(NOW.minus(UserLifecycleService.DELETION_GRACE_PERIOD));
-        OrganizationMembership ownerMembership = mock(OrganizationMembership.class);
-        when(ownerMembership.getRole()).thenReturn(OrganizationRole.OWNER);
-        when(memberships.findAllByUserIdForUpdate(account.getId())).thenReturn(List.of(ownerMembership));
-        service = new UserLifecycleService(accounts, memberships, membershipHistory, apiKeys,
-                passwordRecovery, mfa, sessions, refreshTokens, apiKeyService, audit,
-                passwordEncoder, Clock.fixed(NOW, ZoneOffset.UTC));
+        when(accountDataPurge.purge(account.getId())).thenReturn(false);
 
         assertThatThrownBy(() -> service.completeDeletion(account.getId()))
                 .isInstanceOf(BusinessException.class)
                 .extracting(exception -> ((BusinessException) exception).code())
-                .isEqualTo("ORGANIZATION_OWNERSHIP_TRANSFER_REQUIRED");
+                .isEqualTo("ACCOUNT_DELETION_NOT_DUE");
         assertThat(account.getStatus()).isEqualTo(UserStatus.PENDING_DELETION);
-        verify(accounts, never()).save(account);
-        verify(sessions, never()).revokeActiveByUserId(account.getId());
-    }
-
-    @Test
-    void completionRevokesMembershipWithoutDeletingTheSharedOrganization() {
-        account.requestDeletion(NOW.minus(UserLifecycleService.DELETION_GRACE_PERIOD));
-        OrganizationMembership membership = mock(OrganizationMembership.class);
-        var organization = mock(com.pesaguard.backend.organization.domain.Organization.class);
-        when(organization.getId()).thenReturn(ORGANIZATION_ID);
-        when(membership.getStatus()).thenReturn(MembershipStatus.ACTIVE);
-        when(membership.getRole()).thenReturn(OrganizationRole.DEVELOPER);
-        when(membership.getOrganization()).thenReturn(organization);
-        when(membership.getUser()).thenReturn(account);
-        when(memberships.findAllByUserId(account.getId())).thenReturn(List.of(membership));
-        when(memberships.findAllByUserIdForUpdate(account.getId())).thenReturn(List.of(membership));
-        when(memberships.existsByUserIdAndRole(account.getId(), OrganizationRole.OWNER)).thenReturn(false);
-
-        service = new UserLifecycleService(accounts, memberships, membershipHistory, apiKeys,
-                passwordRecovery, mfa, sessions, refreshTokens, apiKeyService, audit,
-                passwordEncoder,
-                Clock.fixed(NOW, ZoneOffset.UTC));
-
-        assertThat(service.completeDeletion(account.getId())).isTrue();
-        verify(membership).remove();
-        verify(memberships).save(membership);
-        verify(membershipHistory).save(any());
-        verify(audit).append(eq(ORGANIZATION_ID), eq(account.getId()),
-                eq("account.deletion.completed"), eq("user_account"),
-                eq(account.getId().toString()), any(), any());
-        assertThat(account.getStatus()).isEqualTo(UserStatus.DELETED);
+        verify(sessions).revokeActiveByUserId(account.getId());
     }
 
     @Test

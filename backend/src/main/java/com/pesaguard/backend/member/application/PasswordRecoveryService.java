@@ -143,35 +143,6 @@ public class PasswordRecoveryService {
         refreshTokenService.revokeAllForUser(account.getId(), "PASSWORD_RESET");
     }
 
-    /**
-     * Changes the password of an authenticated user.
-     *
-     * <p>The current password is required even though the caller is already
-     * authenticated, so a stolen access token alone cannot lock the real owner
-     * out by changing the password. Other sessions and all refresh families are
-     * revoked; the caller keeps their own session so they are not signed out of
-     * the device they are currently using.
-     */
-    @Transactional
-    public void change(UUID userId, UUID currentSessionId, String currentPassword, String newPassword) {
-        Instant now = clock.instant();
-        UserAccount account = accountRepository.findById(userId)
-                .orElseThrow(this::invalidToken);
-
-        requirePasswordMatch(currentPassword, account);
-        if (passwordEncoder.matches(newPassword, account.getPasswordHash())) {
-            throw new BusinessException(HttpStatus.BAD_REQUEST, "PASSWORD_UNCHANGED",
-                    "The new password must differ from the current one.");
-        }
-        passwordPolicy.validate(newPassword, account.getEmail(), account.getDisplayName());
-
-        account.changePassword(passwordEncoder.encode(newPassword), now);
-        accountRepository.save(account);
-
-        sessionService.revokeActiveByUserIdExcept(userId, currentSessionId);
-        refreshTokenService.revokeAllForUser(userId, "PASSWORD_CHANGED");
-    }
-
     /** Requires a fresh password proof before a sensitive account-security action. */
     @Transactional(readOnly = true)
     public void requireCurrentPassword(UUID userId, String currentPassword) {

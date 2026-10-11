@@ -749,7 +749,7 @@ export function SupportPage() {
           <div><span className="section-eyebrow">SUPPORT INBOX</span><h2 id="support-ticket-list-title">My tickets</h2><p>{isAuthenticated ? "Requests submitted from this account." : "Sign in to access the persisted support inbox."}</p></div>
           <div className="support-ticket-actions">{isAuthenticated && <button className="button button--secondary" type="button" disabled={ticketsLoading} onClick={() => setRefreshVersion((current) => current + 1)}><RefreshCw size={14} />Refresh</button>}<button className="button button--primary" type="button" disabled={!isAuthenticated} onClick={() => startTicketForm()}><FilePlus2 size={14} />New ticket</button></div>
         </div>
-        {!isAuthenticated && <p className="support-preview-note">Support tickets are persisted by the backend and require an authenticated account.</p>}
+        {!isAuthenticated && <p className="support-preview-note">Support tickets are persisted by the system and require an authenticated account.</p>}
         {ticketsError && <p className="notification-alert" role="alert">{ticketsError}</p>}
         {focusedTicket && <article className="support-ticket-focused"><span className="support-ticket-id">{focusedTicket.id}</span><h3>{focusedTicket.subject}</h3><span className="support-ticket-status">{focusedTicket.status.replaceAll("_", " ")}</span><p>{focusedTicket.description}</p><button type="button" className="support-inline-link" disabled={ticketActionId === focusedTicket.id} onClick={() => void updateTicketStatus(focusedTicket)}>{focusedTicket.status === "CLOSED" ? "Reopen ticket" : "Close ticket"}</button></article>}
         {ticketsLoading ? <p className="support-tickets-empty">Loading your support requests…</p>

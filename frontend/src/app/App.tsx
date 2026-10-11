@@ -4,7 +4,6 @@ import { UsagePage } from "../pages/analytics/UsagePage";
 import { DebuggingPage } from "../pages/debugging/DebuggingPage";
 import { LogsPage } from "../pages/logs/LogsPage";
 import { ApiCatalogPage } from "../pages/apis/ApiCatalogPage";
-import { ExternalIntegrationsPage } from "../pages/integrations/ExternalIntegrationsPage";
 import { ApiLifecyclePage } from "../pages/apis/ApiLifecyclePage";
 import { ApiDetailsPage } from "../pages/apis/ApiDetailsPage";
 import { ApiVersionsPage } from "../pages/apis/ApiVersionsPage";
@@ -13,7 +12,6 @@ import { AuditDetailsPage } from "../pages/audit/AuditDetailsPage";
 import { AuditLogsPage } from "../pages/audit/AuditLogsPage";
 import { ActivityPage } from "../pages/dashboard/ActivityPage";
 import { EnvironmentsPage } from "../pages/dashboard/EnvironmentsPage";
-import { OrganizationsPage } from "../pages/dashboard/OrganizationsPage";
 import { OverviewPage } from "../pages/dashboard/OverviewPage";
 import { ProjectsPage } from "../pages/dashboard/ProjectsPage";
 import { SecurityPage } from "../pages/dashboard/SecurityPage";
@@ -23,20 +21,11 @@ import { ServiceAccountsPage } from "../pages/credentials/ServiceAccountsPage";
 import { EnvironmentPage } from "../pages/environments/EnvironmentPage";
 import { EnvironmentSettingsPage } from "../pages/environments/EnvironmentSettingsPage";
 import { ApiExplorerPage } from "../pages/explorer/ApiExplorerPage";
-import { DeveloperToolsPage } from "../pages/explorer/DeveloperToolsPage";
 import { NotFoundPage } from "../pages/errors/NotFoundPage";
 import { ForbiddenPage } from "../pages/errors/ForbiddenPage";
-import { InvitationsPage } from "../pages/organizations/InvitationsPage";
-import { MembersPage } from "../pages/organizations/MembersPage";
-import { OrganizationPage } from "../pages/organizations/OrganizationPage";
-import { OrganizationSettingsPage } from "../pages/organizations/OrganizationSettingsPage";
-import { NotificationsPage } from "../pages/notifications/NotificationsPage";
-import { NotificationSettingsPage } from "../pages/notifications/NotificationSettingsPage";
 import { SupportPage } from "../pages/support/SupportPage";
-import { SuggestionsPage } from "../pages/suggestions/SuggestionsPage";
 import { GoLivePage, goLiveSections, type GoLiveSectionId } from "../pages/golive/GoLivePage";
 import { ProjectActivityPage } from "../pages/projects/ProjectActivityPage";
-import { ProjectMembersPage } from "../pages/projects/ProjectMembersPage";
 import { ProjectOverviewPage } from "../pages/projects/ProjectOverviewPage";
 import { ProjectSettingsPage } from "../pages/projects/ProjectSettingsPage";
 import { SandboxActivityPage } from "../pages/sandbox/SandboxActivityPage";
@@ -46,12 +35,6 @@ import { SecurityCenterPage } from "../pages/security/SecurityCenterPage";
 import { SecurityEventsPage } from "../pages/security/SecurityEventsPage";
 import { SessionsPage } from "../pages/security/SessionsPage";
 import { AccountSettingsPage } from "../pages/settings/AccountSettingsPage";
-import { AppearanceSettingsPage } from "../pages/settings/AppearanceSettingsPage";
-import { DangerZonePage } from "../pages/settings/DangerZonePage";
-import { DeveloperSettingsPage } from "../pages/settings/DeveloperSettingsPage";
-import { SecuritySettingsPage } from "../pages/settings/SecuritySettingsPage";
-import { SettingsPage } from "../pages/settings/SettingsPage";
-import { TeamSettingsPage } from "../pages/settings/TeamSettingsPage";
 import { WebhooksPage } from "../pages/webhooks/WebhooksPage";
 import { LoadTestingPage } from "../pages/load-testing/LoadTestingPage";
 import { EventsPage } from "../pages/events/EventsPage";
@@ -84,9 +67,6 @@ function pageFromLocation(): { page: PageId; logId: string | null; goLiveSection
   }
   if (pathname === "/support" || pathname.startsWith("/support/")) {
     return { page: "support-hub", logId: null };
-  }
-  if (pathname === "/suggestions" || pathname.startsWith("/suggestions/")) {
-    return { page: "suggestions", logId: null };
   }
   if (pathname === "/debugging") return { page: "debugging", logId: null };
   if (pathname === "/load-testing" || pathname === "/load-testing/") return { page: "load-testing", logId: null };
@@ -255,12 +235,11 @@ export default function App() {
   function navigate(page: PageId, keyId?: string) {
     if (!confirmLeavingUnsavedForm()) return;
     const params = new URLSearchParams();
-    if (page !== "overview" && page !== "support-hub" && page !== "suggestions" && page !== "go-live") {
+    if (page !== "overview" && page !== "support-hub" && page !== "go-live") {
       params.set("page", page);
     }
     if (keyId && (page === "usage" || page === "logs")) params.set("apiKeyId", keyId);
     const nextUrl = page === "overview" ? "/" : page === "support-hub" ? "/support"
-      : page === "suggestions" ? "/suggestions"
       : page === "go-live" ? "/go-live/readiness" : `/?${params.toString()}`;
     pushHistoryUrl(nextUrl);
     setLocation({
@@ -304,14 +283,8 @@ export default function App() {
 
   const renderPage = () => {
     const requiredPermission: Partial<Record<PageId, string>> = {
-      organizations: "organization:read",
-      "organization-detail": "organization:read",
-      "organization-members": "organization:read",
-      "organization-invitations": "workspace:invite",
-      "organization-settings": "workspace_settings:update",
       projects: "project:read",
       "project-overview": "project:read",
-      "project-members": "project:read",
       "project-settings": "project:update",
       "project-activity": "audit:read",
       environments: "environment:read",
@@ -331,8 +304,6 @@ export default function App() {
       security: "security:read",
       "security-center": "security:read",
       "security-events": "security:read",
-      "security-settings": "security:read",
-      "team-settings": "organization:read",
       "sandbox": "sandbox:read",
       "sandbox-activity": "sandbox:read",
       "sandbox-settings": "sandbox:update",
@@ -349,22 +320,10 @@ export default function App() {
     switch (activePage) {
       case "overview":
         return <OverviewPage onNavigate={navigate} />;
-      case "organizations":
-        return <OrganizationsPage onNavigate={navigate} />;
-      case "organization-detail":
-        return <OrganizationPage />;
-      case "organization-members":
-        return <MembersPage onNavigate={navigate} />;
-      case "organization-invitations":
-        return <InvitationsPage />;
-      case "organization-settings":
-        return <OrganizationSettingsPage />;
       case "projects":
         return <ProjectsPage onNavigate={navigate} />;
       case "project-overview":
         return <ProjectOverviewPage onNavigate={navigate} />;
-      case "project-members":
-        return <ProjectMembersPage />;
       case "project-settings":
         return <ProjectSettingsPage />;
       case "project-activity":
@@ -379,12 +338,8 @@ export default function App() {
         return <ApiExplorerPage />;
       case "api-lifecycle":
         return <ApiLifecyclePage onNavigate={navigate} />;
-      case "developer-tools":
-        return <DeveloperToolsPage onNavigate={navigate} />;
       case "api-catalog":
         return <ApiCatalogPage />;
-      case "external-integrations":
-        return <ExternalIntegrationsPage onNavigate={navigate} />;
       case "api-details":
         return <ApiDetailsPage onNavigate={navigate} />;
       case "api-versions":
@@ -430,34 +385,16 @@ export default function App() {
         return <AuditLogsPage />;
       case "audit-details":
         return <AuditDetailsPage />;
-      case "notifications":
-        return <NotificationsPage />;
-      case "notification-settings":
-        return <NotificationSettingsPage standalone />;
       case "support-hub":
         return <SupportPage />;
-      case "suggestions":
-        return <SuggestionsPage />;
       case "sandbox":
         return <SandboxPage />;
       case "sandbox-activity":
         return <SandboxActivityPage />;
       case "sandbox-settings":
         return <SandboxSettingsPage />;
-      case "settings":
-        return <SettingsPage onNavigate={navigate} />;
       case "account-settings":
         return <AccountSettingsPage />;
-      case "security-settings":
-        return <SecuritySettingsPage />;
-      case "appearance-settings":
-        return <AppearanceSettingsPage />;
-      case "developer-settings":
-        return <DeveloperSettingsPage onNavigate={navigate} />;
-      case "team-settings":
-        return <TeamSettingsPage />;
-      case "danger-zone":
-        return <DangerZonePage onNavigate={navigate} />;
       case "not-found":
       case "unauthorized":
       case "forbidden":

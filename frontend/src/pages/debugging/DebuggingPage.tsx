@@ -47,7 +47,7 @@ export function DebuggingPage() {
       <PageHeader
         eyebrow="OBSERVABILITY"
         title="Request correlation"
-        description="Look up persisted request telemetry by request ID. Distributed spans are not currently stored by this backend."
+        description="Look up persisted request telemetry by request ID. Distributed spans are not currently stored by this system."
       />
       <section className="panel">
         <div className="panel-heading"><div><h2>Find a request</h2><p>Search uses organization-scoped API request metadata.</p></div><Activity size={18} /></div>

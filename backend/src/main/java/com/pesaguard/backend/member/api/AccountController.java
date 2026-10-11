@@ -37,9 +37,9 @@ public class AccountController {
     @PostMapping("/deactivate")
     public ResponseEntity<Void> deactivate(
             @AuthenticationPrincipal AuthenticatedUser principal,
-            @Valid @RequestBody AccountStepUpRequest request) {
+            @Valid @RequestBody AccountPauseRequest request) {
         lifecycleService.deactivate(principal.userId(), principal.organizationId(),
-                request.currentPassword(), request.mfaCode());
+                request.currentPassword(), request.mfaCode(), request.durationDays());
         return ResponseEntity.noContent().build();
     }
 

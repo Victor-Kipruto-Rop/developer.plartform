@@ -1,14 +1,13 @@
 import { ValidatedForm } from "../../components/forms/ValidatedForm";
 import { getUserMessage } from "../../lib/errors";
 import { useEffect, useMemo, useState, type FormEvent, type KeyboardEvent } from "react";
-import { Activity, AlertTriangle, BellRing, Check, ChevronLeft, ChevronRight, Clock3, Copy, Eye, EyeOff, Fingerprint, KeyRound, MailCheck, Monitor, RotateCw, Search, Settings2, Shield, ShieldAlert, ShieldCheck } from "lucide-react";
+import { Activity, AlertTriangle, BellRing, Check, ChevronLeft, ChevronRight, Clock3, Copy, Fingerprint, KeyRound, MailCheck, Monitor, RotateCw, Search, Settings2, Shield, ShieldAlert, ShieldCheck } from "lucide-react";
 import { PageHeader } from "../../components/ui/PageHeader";
 import { apiData } from "../../lib/api";
 import { copyTextToClipboard } from "../../lib/clipboard";
 import { useAuth } from "../../context/AuthContext";
 import {
   beginMfaEnrolment,
-  changePassword,
   confirmMfaEnrolment,
   disableMfa,
   beginPasskeyRegistration,
@@ -26,6 +25,7 @@ import {
 } from "../../lib/authApi";
 import { createPasskey, passkeysAvailable } from "../../lib/passkeys";
 import type { SessionSummary } from "../../types/auth";
+import { PasswordSettingsStep } from "../settings/PasswordSettingsStep";
 
 type AuditEvent = {
   id: string;
@@ -98,7 +98,7 @@ function formatTime(value: string) {
 }
 
 function errorMessage(error: unknown) {
-  return getUserMessage(error, "The backend request failed.");
+  return getUserMessage(error, "The system request failed.");
 }
 
 export function SecurityCenterPage({ title = "Security center" }: { title?: string } = {}) {
@@ -140,15 +140,6 @@ export function SecurityCenterPage({ title = "Security center" }: { title?: stri
   const [passkeyCurrentPassword, setPasskeyCurrentPassword] = useState("");
   const [mfaCurrentPassword, setMfaCurrentPassword] = useState("");
   const [mfaDisableCode, setMfaDisableCode] = useState("");
-  const [currentPassword, setCurrentPassword] = useState("");
-  const [newPassword, setNewPassword] = useState("");
-  const [confirmPassword, setConfirmPassword] = useState("");
-  const [showCurrentPassword, setShowCurrentPassword] = useState(false);
-  const [showNewPassword, setShowNewPassword] = useState(false);
-  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
-  const [passwordError, setPasswordError] = useState("");
-  const [passwordNotice, setPasswordNotice] = useState("");
-  const [passwordBusy, setPasswordBusy] = useState(false);
   const [sessionError, setSessionError] = useState("");
   const [auditError, setAuditError] = useState("");
   const [loading, setLoading] = useState(true);
@@ -496,28 +487,6 @@ export function SecurityCenterPage({ title = "Security center" }: { title?: stri
     }
   }
 
-  async function updatePassword(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setPasswordError("");
-    setPasswordNotice("");
-    if (newPassword !== confirmPassword) {
-      setPasswordError("The new password entries do not match.");
-      return;
-    }
-    setPasswordBusy(true);
-    try {
-      await changePassword({ currentPassword, newPassword });
-      setCurrentPassword("");
-      setNewPassword("");
-      setConfirmPassword("");
-      setPasswordNotice("Your password was changed.");
-    } catch (error) {
-      setPasswordError(errorMessage(error));
-    } finally {
-      setPasswordBusy(false);
-    }
-  }
-
   const activeSessions = sessions.length;
 
   return (
@@ -583,8 +552,8 @@ export function SecurityCenterPage({ title = "Security center" }: { title?: stri
       >
       {activeTab === "overview" && <>
       <section className="stats-grid stats-grid--three security-summary" aria-label="Security summary">
-        <article className="stat-card"><div className="stat-card-top"><span>Organization MFA</span><ShieldCheck size={17} /></div><div className="stat-value">{organizationMfaRequired === null ? "—" : organizationMfaRequired ? "Required" : "Optional"}</div><div className="stat-foot">{organizationMfaRequired === null ? organizationPolicyError || "Checking organization policy…" : "Policy provided by the backend"}</div></article>
-        <article className="stat-card"><div className="stat-card-top"><span>Active sessions</span><Monitor size={17} /></div><div className="stat-value">{sessionError ? "—" : activeSessions}</div><div className="stat-foot">{sessionError || "Account sessions returned by backend"}</div></article>
+        <article className="stat-card"><div className="stat-card-top"><span>Organization MFA</span><ShieldCheck size={17} /></div><div className="stat-value">{organizationMfaRequired === null ? "—" : organizationMfaRequired ? "Required" : "Optional"}</div><div className="stat-foot">{organizationMfaRequired === null ? organizationPolicyError || "Checking organization policy…" : "Policy provided by the system"}</div></article>
+        <article className="stat-card"><div className="stat-card-top"><span>Active sessions</span><Monitor size={17} /></div><div className="stat-value">{sessionError ? "—" : activeSessions}</div><div className="stat-foot">{sessionError || "Account sessions returned by system"}</div></article>
         <article className="stat-card"><div className="stat-card-top"><span>Unresolved sign-in alerts</span><ShieldAlert size={17} /></div><div className="stat-value">{accountSignals.length}</div><div className="stat-foot">{loginProtection?.locked ? "An active account lockout is also in effect" : loginProtectionError || (accountSignals.length === 0 ? "No open sign-in alerts reported" : "Review the flagged account activity")}</div></article>
       </section>
       <section className="panel security-account-panel" aria-labelledby="security-account-heading">
@@ -742,17 +711,7 @@ export function SecurityCenterPage({ title = "Security center" }: { title?: stri
           </div>}
       </section>
 
-      <section className="panel security-controls-panel" id="security-password" aria-label="Change account password">
-        <div className="panel-heading"><div><h2>Change password</h2><p>Confirm your current password and choose a new password that meets the backend policy.</p></div><KeyRound size={17} className="heading-icon" /></div>
-        {passwordError && <p className="notification-alert" role="alert">{passwordError}</p>}
-        {passwordNotice && <p className="security-feedback" role="status">{passwordNotice}</p>}
-        <ValidatedForm className="settings-groups" onSubmit={(event) => void updatePassword(event)}>
-          <label className="settings-field"><span>Current password</span><span className="security-password-input"><input className="field-control" type={showCurrentPassword ? "text" : "password"} autoComplete="current-password" required maxLength={200} value={currentPassword} onChange={(event) => setCurrentPassword(event.target.value)} /><button type="button" aria-label={showCurrentPassword ? "Hide current password" : "Show current password"} aria-pressed={showCurrentPassword} onClick={() => setShowCurrentPassword((shown) => !shown)}>{showCurrentPassword ? <EyeOff size={16} aria-hidden="true" /> : <Eye size={16} aria-hidden="true" />}</button></span></label>
-          <label className="settings-field"><span>New password</span><span className="security-password-input"><input className="field-control" type={showNewPassword ? "text" : "password"} autoComplete="new-password" required value={newPassword} onChange={(event) => setNewPassword(event.target.value)} /><button type="button" aria-label={showNewPassword ? "Hide new password" : "Show new password"} aria-pressed={showNewPassword} onClick={() => setShowNewPassword((shown) => !shown)}>{showNewPassword ? <EyeOff size={16} aria-hidden="true" /> : <Eye size={16} aria-hidden="true" />}</button></span></label>
-          <label className="settings-field"><span>Confirm new password</span><span className="security-password-input"><input className="field-control" type={showConfirmPassword ? "text" : "password"} autoComplete="new-password" required value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} /><button type="button" aria-label={showConfirmPassword ? "Hide confirmation password" : "Show confirmation password"} aria-pressed={showConfirmPassword} onClick={() => setShowConfirmPassword((shown) => !shown)}>{showConfirmPassword ? <EyeOff size={16} aria-hidden="true" /> : <Eye size={16} aria-hidden="true" />}</button></span></label>
-          <button className="button button--primary" type="submit" disabled={passwordBusy}>{passwordBusy ? "Updating…" : "Change password"}</button>
-        </ValidatedForm>
-      </section>
+      <PasswordSettingsStep />
       </div>}
 
       {activeTab === "sessions" && <>
@@ -762,7 +721,7 @@ export function SecurityCenterPage({ title = "Security center" }: { title?: stri
         {loading && sessions.length === 0
           ? <p className="security-empty-state">Loading account sessions…</p>
           : sessions.length === 0
-            ? <p className="security-empty-state">No active sessions returned by the backend.</p>
+            ? <p className="security-empty-state">No active sessions returned by the system.</p>
             : <div className="table-scroll"><table className="data-table security-table"><thead><tr><th>CLIENT</th><th>IP ADDRESS</th><th>LAST ACTIVE</th><th>EXPIRES</th><th></th></tr></thead><tbody>{sessions.map((session) => <tr key={session.id}><td><strong>{session.deviceLabel}</strong>{session.current && <span className="security-current-label">Current</span>}<code>{session.id}</code></td><td>{session.lastIp ?? "Not reported"}</td><td>{formatTime(session.lastSeenAt)}</td><td>{formatTime(session.expiresAt)}</td><td>{!session.current && <button className="text-button" type="button" disabled={Boolean(revokingId)} onClick={() => void endSession(session)}>{revokingId === session.id ? "Revoking…" : "Revoke session"}</button>}</td></tr>)}</tbody></table></div>}
       </section>
       </>}
@@ -780,7 +739,7 @@ export function SecurityCenterPage({ title = "Security center" }: { title?: stri
         {auditLoading
           ? <p className="security-empty-state">Loading audit events…</p>
           : visibleEvents.length === 0
-            ? <p className="security-empty-state"><AlertTriangle size={16} />{events.length ? "No loaded events match this search." : "No audit events returned by the backend."}</p>
+            ? <p className="security-empty-state"><AlertTriangle size={16} />{events.length ? "No loaded events match this search." : "No audit events returned by the system."}</p>
             : <div className="table-scroll"><table className="data-table security-table"><thead><tr><th>SEQUENCE</th><th>ACTION</th><th>RESOURCE</th><th>ACTOR</th><th>REQUEST</th><th>TIME</th></tr></thead><tbody>{visibleEvents.map((event) => <tr key={event.id}><td>{event.sequenceNumber}</td><td><strong>{event.action}</strong></td><td>{event.resourceType}{event.resourceId ? <code>{event.resourceId}</code> : null}</td><td><code>{event.actorUserId}</code></td><td><code>{event.requestId}</code></td><td>{formatTime(event.createdAt)}</td></tr>)}</tbody></table></div>}
       </section>
       </>}

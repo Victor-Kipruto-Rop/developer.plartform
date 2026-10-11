@@ -1,5 +1,5 @@
 import { getUserMessage } from "../../lib/errors";
-import { Download, LogOut, ShieldCheck, Sparkles, TimerReset, Trash2, UserCircle2 } from "lucide-react";
+import { ShieldCheck, Sparkles, TimerReset, UserCircle2 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useAuth } from "../../context/AuthContext";
 import {
@@ -12,13 +12,9 @@ import {
 import { usernameValidationMessage } from "../../lib/usernameValidation";
 import { PageHeader } from "../../components/ui/PageHeader";
 import {
-  cancelAccountDeletion,
-  deactivateAccount,
-  exportAccountData,
-  getAccountLifecycle,
-  requestAccountDeletion,
-  type AccountLifecycle,
-} from "../../lib/accountApi";
+  DangerZonePage,
+} from "./DangerZonePage";
+import { PasswordSettingsStep } from "./PasswordSettingsStep";
 
 type VerificationStatus = "verified" | "pending" | "unverified" | "loading" | "unavailable";
 type SupportedLanguage = "en-US" | "en-GB" | "sw" | "fr" | "es" | "ar" | "pt-BR" | "de" | "ja";
@@ -437,7 +433,7 @@ const timezoneStorageKey = "pesaguard.account.timezone";
 const languageStorageKey = "pesaguard.account.language";
 
 export function AccountSettingsPage() {
-  const { user, isAuthenticated, logout, reload } = useAuth();
+  const { user, isAuthenticated, reload } = useAuth();
   const [form, setForm] = useState(initialProfile);
   const [emailStatus, setEmailStatus] = useState<VerificationStatus>("loading");
   const [mfaEnabled, setMfaEnabled] = useState<boolean | null>(null);
@@ -447,13 +443,7 @@ export function AccountSettingsPage() {
   const [profileError, setProfileError] = useState<string | null>(null);
   const [usernameLoading, setUsernameLoading] = useState(true);
   const [savedUsername, setSavedUsername] = useState("");
-  const [accountLifecycle, setAccountLifecycle] = useState<AccountLifecycle | null>(null);
-  const [lifecycleLoading, setLifecycleLoading] = useState(true);
-  const [lifecycleBusy, setLifecycleBusy] = useState(false);
-  const [lifecycleError, setLifecycleError] = useState("");
-  const [lifecycleNotice, setLifecycleNotice] = useState("");
-  const [stepUpPassword, setStepUpPassword] = useState("");
-  const [stepUpCode, setStepUpCode] = useState("");
+  const [activeWizard, setActiveWizard] = useState<"details" | "password" | "danger">("details");
   const usernameValidationError = form.username !== savedUsername
     ? usernameValidationMessage(form.username, form.email)
     : null;
@@ -510,14 +500,6 @@ export function AccountSettingsPage() {
       if (active) setMfaEnabled(status.enabled);
     }).catch((error: unknown) => {
       if (active) setMfaError(getUserMessage(error, "Could not load MFA status."));
-    });
-    setLifecycleLoading(true);
-    void getAccountLifecycle().then((status) => {
-      if (active) setAccountLifecycle(status);
-    }).catch((error: unknown) => {
-      if (active) setLifecycleError(getUserMessage(error, "Could not load account lifecycle status."));
-    }).finally(() => {
-      if (active) setLifecycleLoading(false);
     });
     return () => {
       active = false;
@@ -581,96 +563,6 @@ export function AccountSettingsPage() {
     }
   }
 
-  function stepUpPayload() {
-    return {
-      currentPassword: stepUpPassword,
-      ...(stepUpCode.trim() ? { mfaCode: stepUpCode.trim() } : {}),
-    };
-  }
-
-  async function downloadAccountExport() {
-    setLifecycleBusy(true);
-    setLifecycleError("");
-    setLifecycleNotice("");
-    try {
-      const data = await exportAccountData(stepUpPayload());
-      const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json;charset=utf-8" });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = "pesaguard-account-export.json";
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      window.setTimeout(() => URL.revokeObjectURL(url), 0);
-      setLifecycleNotice("Your account export has been downloaded.");
-    } catch (error) {
-      setLifecycleError(getUserMessage(error, "The account export could not be created."));
-    } finally {
-      setLifecycleBusy(false);
-      setStepUpPassword("");
-      setStepUpCode("");
-    }
-  }
-
-  async function beginAccountDeletion() {
-    if (!window.confirm("Request account deletion? Your account will remain recoverable for 30 days, then permanently removed. You must transfer organization ownership first.")) {
-      return;
-    }
-    setLifecycleBusy(true);
-    setLifecycleError("");
-    setLifecycleNotice("");
-    try {
-      const status = await requestAccountDeletion(stepUpPayload());
-      setAccountLifecycle(status);
-      setLifecycleNotice("Deletion requested. You can cancel it before the scheduled completion date.");
-    } catch (error) {
-      setLifecycleError(getUserMessage(error, "Account deletion could not be requested."));
-    } finally {
-      setLifecycleBusy(false);
-      setStepUpPassword("");
-      setStepUpCode("");
-    }
-  }
-
-  async function undoAccountDeletion() {
-    setLifecycleBusy(true);
-    setLifecycleError("");
-    setLifecycleNotice("");
-    try {
-      const status = await cancelAccountDeletion(stepUpPayload());
-      setAccountLifecycle(status);
-      setLifecycleNotice("The pending account deletion was cancelled.");
-    } catch (error) {
-      setLifecycleError(getUserMessage(error, "The account deletion could not be cancelled."));
-    } finally {
-      setLifecycleBusy(false);
-      setStepUpPassword("");
-      setStepUpCode("");
-    }
-  }
-
-  async function deactivateCurrentAccount() {
-    if (!window.confirm("Deactivate this account? You will be signed out, and personal sessions and API keys will be revoked. Sign-in cannot be restored from this page; contact support if you need to reactivate the account.")) {
-      return;
-    }
-    setLifecycleBusy(true);
-    setLifecycleError("");
-    setLifecycleNotice("");
-    try {
-      await deactivateAccount(stepUpPayload());
-      await logout();
-    } catch (error) {
-      setLifecycleError(getUserMessage(error, "The account could not be deactivated."));
-      setLifecycleBusy(false);
-      setStepUpPassword("");
-      setStepUpCode("");
-    }
-  }
-
-  const stepUpReady = Boolean(stepUpPassword.trim()) && (mfaEnabled !== true || Boolean(stepUpCode.trim()));
-  const deletionPending = accountLifecycle?.status === "PENDING_DELETION";
-
   return (
     <div className="premium-page account-settings-page">
       <PageHeader
@@ -679,7 +571,19 @@ export function AccountSettingsPage() {
         description={t.description}
       />
 
-      <section className="panel account-profile-panel">
+      <nav className="account-settings-wizard" role="tablist" aria-label="Account settings">
+        <button type="button" role="tab" aria-selected={activeWizard === "details"} className={activeWizard === "details" ? "is-active" : ""} onClick={() => setActiveWizard("details")}>
+          <UserCircle2 size={16} />My details
+        </button>
+        <button type="button" role="tab" aria-selected={activeWizard === "password"} className={activeWizard === "password" ? "is-active" : ""} onClick={() => setActiveWizard("password")}>
+          <ShieldCheck size={16} />Password
+        </button>
+        <button type="button" role="tab" aria-selected={activeWizard === "danger"} className={activeWizard === "danger" ? "is-active" : ""} onClick={() => setActiveWizard("danger")}>
+          <span aria-hidden="true">!</span>Danger zone
+        </button>
+      </nav>
+
+      {activeWizard === "details" && <section className="panel account-profile-panel">
         <div className="panel-heading" style={{ marginBottom: "20px" }}>
           <div className="account-profile-heading">
           <div className="account-profile-icon">
@@ -784,7 +688,7 @@ export function AccountSettingsPage() {
             </div>
           </div>
 
-          <p className="text-muted">Timezone and language preferences are stored in this browser. Your profile name, username, and email verification are managed by the backend.</p>
+          <p className="text-muted">Timezone and language preferences are stored in this browser. Your profile name, username, and email verification are managed by the system.</p>
 
           <div className="panel account-security-note">
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "12px", flexWrap: "wrap", marginBottom: "12px" }}>
@@ -792,9 +696,9 @@ export function AccountSettingsPage() {
                 <strong>{t.securityHeading}</strong>
                 <div style={{ color: "var(--text-muted)", fontSize: "14px", marginTop: "4px" }}>{t.securityDescription}</div>
               </div>
-              <span className="table-tag">Backend-managed</span>
+              <span className="table-tag">System-managed</span>
             </div>
-            <p className="text-muted">This screen does not change authentication policy. Manage live sessions and organization security policy in Security Center.</p>
+            <p className="text-muted">This screen does not change sign-in policy. Manage password changes in the Password section.</p>
           </div>
 
           {saveState && (
@@ -818,49 +722,9 @@ export function AccountSettingsPage() {
             </button>
           </div>
         </div>
-      </section>
-      <section className="panel account-lifecycle-panel" aria-labelledby="account-lifecycle-title">
-        <div className="panel-heading">
-          <div>
-            <h2 id="account-lifecycle-title">Account data and lifecycle</h2>
-            <p>Export your personal account data or request deletion with a 30-day recovery period.</p>
-          </div>
-          <span className="table-tag">{lifecycleLoading ? "LOADING" : accountLifecycle?.status ?? "UNAVAILABLE"}</span>
-        </div>
-        {lifecycleError && <p className="notification-alert" role="alert">{lifecycleError}</p>}
-        {lifecycleNotice && <p className="notification-success" role="status">{lifecycleNotice}</p>}
-        {accountLifecycle?.deletionBlockedByOrganizationOwnership && <p className="notification-alert" role="alert">
-          Transfer ownership of every organization you own before requesting account deletion. Shared organizations and their records are not deleted with your account.
-        </p>}
-        <div className="account-lifecycle-summary">
-          <span><strong>Account status</strong>{accountLifecycle?.status ?? (lifecycleLoading ? "Loading…" : "Unavailable")}</span>
-          {accountLifecycle?.deletionRequestedAt && <span><strong>Deletion requested</strong>{new Date(accountLifecycle.deletionRequestedAt).toLocaleString()}</span>}
-          {accountLifecycle?.deletionCompletesAt && <span><strong>Scheduled completion</strong>{new Date(accountLifecycle.deletionCompletesAt).toLocaleString()}</span>}
-        </div>
-        <div className="account-lifecycle-step-up">
-          <label>Current password
-            <input className="field-control" type="password" autoComplete="current-password" value={stepUpPassword} onChange={(event) => setStepUpPassword(event.target.value)} />
-          </label>
-          {mfaEnabled && <label>Authenticator or recovery code
-            <input className="field-control" autoComplete="one-time-code" inputMode="text" value={stepUpCode} onChange={(event) => setStepUpCode(event.target.value)} />
-          </label>}
-        </div>
-        <div className="account-lifecycle-actions">
-          <button className="button button--secondary" type="button" disabled={lifecycleBusy || lifecycleLoading || !stepUpReady} onClick={() => void downloadAccountExport()}>
-            <Download size={14} />{lifecycleBusy ? "Working…" : "Download account export"}
-          </button>
-          {deletionPending
-            ? <button className="button button--secondary" type="button" disabled={lifecycleBusy || !stepUpReady} onClick={() => void undoAccountDeletion()}>
-              <TimerReset size={14} />Cancel deletion
-            </button>
-            : <button className="button button--danger" type="button" disabled={lifecycleBusy || lifecycleLoading || !stepUpReady || accountLifecycle?.deletionBlockedByOrganizationOwnership || accountLifecycle?.status !== "ACTIVE"} onClick={() => void beginAccountDeletion()}>
-              <Trash2 size={14} />Request account deletion
-            </button>}
-          {!deletionPending && <button className="button button--danger" type="button" disabled={lifecycleBusy || lifecycleLoading || !stepUpReady || accountLifecycle?.status !== "ACTIVE"} onClick={() => void deactivateCurrentAccount()}>
-            <LogOut size={14} />Deactivate account
-          </button>}
-        </div>
-      </section>
+      </section>}
+      {activeWizard === "password" && <PasswordSettingsStep />}
+      {activeWizard === "danger" && <DangerZonePage />}
     </div>
   );
 }

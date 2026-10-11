@@ -17,7 +17,7 @@ import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 
-/** Rechecks developer account, organization, and onboarding state before dashboard APIs. */
+/** Rechecks developer account and organization access before dashboard APIs. */
 @Component
 public class DeveloperWorkspaceAccessFilter extends OncePerRequestFilter {
 
@@ -64,12 +64,7 @@ public class DeveloperWorkspaceAccessFilter extends OncePerRequestFilter {
         }
 
         try {
-            var onboardingStatus = onboardingStatusService.statusFor(developer);
-            if (!onboardingStatus.complete() && !onboardingStatus.skipped()) {
-                accessDeniedHandler.handle(request, response,
-                        new AccessDeniedException("Developer onboarding is incomplete."));
-                return;
-            }
+            onboardingStatusService.statusFor(developer);
         } catch (BusinessException exception) {
             accessDeniedHandler.handle(request, response, new AccessDeniedException(exception.getMessage()));
             return;

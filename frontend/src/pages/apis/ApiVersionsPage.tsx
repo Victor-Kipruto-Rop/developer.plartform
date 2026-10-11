@@ -44,11 +44,11 @@ export function ApiVersionsPage() {
       <PageHeader
         eyebrow="VERSIONING"
         title="API versions"
-        description="Versions reported by the backend scope and event registries. Product API release versions are not exposed by these APIs."
+        description="Versions reported by the system scope and event registries. Product API release versions are not exposed by these APIs."
         action={<button className="button button--secondary" type="button" disabled={loading} onClick={() => void loadVersions()}><RefreshCw size={14} />{loading ? "Refreshing…" : "Refresh"}</button>}
       />
       <section className="panel table-panel">
-        <div className="panel-heading"><div><h2>Scope versions</h2><p>Scope version and deprecation state from the backend registry.</p></div><span className="table-tag">BACKEND</span></div>
+        <div className="panel-heading"><div><h2>Scope versions</h2><p>Scope version and deprecation state from the system registry.</p></div><span className="table-tag">SYSTEM</span></div>
         {scopeError && <p className="notification-alert" role="alert">{scopeError}</p>}
         {loading && scopes.length === 0 ? <p className="security-empty-state">Loading scope versions…</p>
           : scopes.length === 0 ? <p className="security-empty-state">{scopeError ? "Scope version data is unavailable." : "No scope versions were returned."}</p>
@@ -57,7 +57,7 @@ export function ApiVersionsPage() {
             </tbody></table></div>}
       </section>
       <section className="panel table-panel">
-        <div className="panel-heading"><div><h2>Event contract versions</h2><p>Version and lifecycle returned by the event catalog.</p></div><span className="table-tag">BACKEND</span></div>
+        <div className="panel-heading"><div><h2>Event contract versions</h2><p>Version and lifecycle returned by the event catalog.</p></div><span className="table-tag">SYSTEM</span></div>
         {eventError && <p className="notification-alert" role="alert">{eventError}</p>}
         {loading && events.length === 0 ? <p className="security-empty-state">Loading event contract versions…</p>
           : events.length === 0 ? <p className="security-empty-state">{eventError ? "Event version data is unavailable." : "No event contract versions were returned."}</p>

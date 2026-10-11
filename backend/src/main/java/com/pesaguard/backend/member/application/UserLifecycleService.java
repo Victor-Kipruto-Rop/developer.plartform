@@ -8,7 +8,6 @@ import java.util.Map;
 import java.util.UUID;
 
 import org.springframework.http.HttpStatus;
-import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -23,12 +22,9 @@ import com.pesaguard.backend.member.api.AccountDataExport;
 import com.pesaguard.backend.member.api.AccountLifecycleView;
 import com.pesaguard.backend.member.domain.UserAccount;
 import com.pesaguard.backend.member.domain.UserStatus;
+import com.pesaguard.backend.member.infrastructure.AccountDataPurgeRepository;
 import com.pesaguard.backend.member.infrastructure.UserAccountRepository;
-import com.pesaguard.backend.organization.domain.MembershipStatus;
 import com.pesaguard.backend.organization.domain.OrganizationMembership;
-import com.pesaguard.backend.organization.domain.OrganizationRole;
-import com.pesaguard.backend.organization.domain.OrganizationMembershipHistory;
-import com.pesaguard.backend.organization.infrastructure.OrganizationMembershipHistoryRepository;
 import com.pesaguard.backend.organization.infrastructure.OrganizationMembershipRepository;
 import com.pesaguard.backend.security.authentication.MfaService;
 import com.pesaguard.backend.security.sessions.RefreshTokenService;
@@ -41,21 +37,21 @@ public class UserLifecycleService {
 
     private final UserAccountRepository accountRepository;
     private final OrganizationMembershipRepository membershipRepository;
-    private final OrganizationMembershipHistoryRepository membershipHistoryRepository;
+    private final AccountDataPurgeRepository accountDataPurgeRepository;
     private final ApiKeyRepository apiKeyRepository;
     private final PasswordRecoveryService passwordRecoveryService;
+    private final AccountEmailDeliveryService emailDelivery;
     private final MfaService mfaService;
     private final SessionService sessionService;
     private final RefreshTokenService refreshTokenService;
     private final ApiKeyService apiKeyService;
     private final AuditService auditService;
-    private final PasswordEncoder passwordEncoder;
     private final Clock clock;
 
     public UserLifecycleService(
             UserAccountRepository accountRepository,
             OrganizationMembershipRepository membershipRepository,
-            OrganizationMembershipHistoryRepository membershipHistoryRepository,
+            AccountDataPurgeRepository accountDataPurgeRepository,
             ApiKeyRepository apiKeyRepository,
             PasswordRecoveryService passwordRecoveryService,
             MfaService mfaService,
@@ -63,19 +59,19 @@ public class UserLifecycleService {
             RefreshTokenService refreshTokenService,
             ApiKeyService apiKeyService,
             AuditService auditService,
-            PasswordEncoder passwordEncoder,
+            AccountEmailDeliveryService emailDelivery,
             Clock clock) {
         this.accountRepository = accountRepository;
         this.membershipRepository = membershipRepository;
-        this.membershipHistoryRepository = membershipHistoryRepository;
+        this.accountDataPurgeRepository = accountDataPurgeRepository;
         this.apiKeyRepository = apiKeyRepository;
         this.passwordRecoveryService = passwordRecoveryService;
+        this.emailDelivery = emailDelivery;
         this.mfaService = mfaService;
         this.sessionService = sessionService;
         this.refreshTokenService = refreshTokenService;
         this.apiKeyService = apiKeyService;
         this.auditService = auditService;
-        this.passwordEncoder = passwordEncoder;
         this.clock = clock;
     }
 
@@ -92,8 +88,7 @@ public class UserLifecycleService {
         return new AccountLifecycleView(
                 account.getStatus(),
                 account.getDeletionRequestedAt(),
-                account.deletionCompletesAt(DELETION_GRACE_PERIOD).orElse(null),
-                hasOwnedOrganizations(userId));
+                account.deletionCompletesAt(DELETION_GRACE_PERIOD).orElse(null));
     }
 
     @Transactional
@@ -134,11 +129,12 @@ public class UserLifecycleService {
         if (account.getStatus() == UserStatus.PENDING_DELETION) {
             throw conflict("DELETION_ALREADY_PENDING", "A deletion request is already pending.");
         }
-        requireNoOwnedOrganizations(userId);
         account.requestDeletion(now);
         accountRepository.save(account);
         appendAudit(organizationId, userId, "account.deletion.requested",
                 Map.of("gracePeriodDays", DELETION_GRACE_PERIOD.toDays()));
+        emailDelivery.sendDeletionRequested(
+                account.getEmail(), now.plus(DELETION_GRACE_PERIOD));
         return account;
     }
 
@@ -163,23 +159,39 @@ public class UserLifecycleService {
 
     @Transactional
     public void deactivate(
-            UUID userId, UUID organizationId, String currentPassword, String mfaCode) {
+            UUID userId, UUID organizationId, String currentPassword, String mfaCode, int durationDays) {
+        if (durationDays != 7 && durationDays != 30 && durationDays != 90) {
+            throw new BusinessException(HttpStatus.BAD_REQUEST, "ACCOUNT_PAUSE_DURATION_INVALID",
+                    "Choose a pause duration of 7, 30, or 90 days.");
+        }
         Instant now = clock.instant();
         UserAccount account = lockAccount(userId);
         requireStepUp(userId, currentPassword, mfaCode);
         if (account.getStatus() != UserStatus.ACTIVE) {
             throw conflict("ACCOUNT_NOT_ACTIVE", "Only an active account can be deactivated.");
         }
-        account.deactivate(now);
+        Instant deactivatedUntil = now.plus(Duration.ofDays(durationDays));
+        account.deactivate(now, deactivatedUntil);
         accountRepository.save(account);
         revokePersonalCredentials(userId, now, "ACCOUNT_DEACTIVATED");
-        appendAudit(organizationId, userId, "account.deactivated", Map.of());
+        appendAudit(organizationId, userId, "account.deactivated", Map.of("durationDays", durationDays));
+        emailDelivery.sendAccountPaused(account.getEmail(), deactivatedUntil);
     }
 
-    /**
-     * Completes a due deletion. Returns false while grace remains; ownership
-     * conflicts deliberately throw and leave all account data untouched.
-     */
+    @Transactional
+    public int reactivateDueAccounts() {
+        Instant now = clock.instant();
+        List<UserAccount> dueAccounts = accountRepository.findPausedAccountsDue(UserStatus.DEACTIVATED, now);
+        for (UserAccount account : dueAccounts) {
+            if (!account.isPauseDue(now)) continue;
+            account.restore(now);
+            accountRepository.save(account);
+            emailDelivery.sendAccountReactivated(account.getEmail());
+        }
+        return dueAccounts.size();
+    }
+
+    /** Completes a due deletion and permanently purges the linked organization data. */
     @Transactional
     public boolean completeDeletion(UUID userId) {
         Instant now = clock.instant();
@@ -191,32 +203,14 @@ public class UserLifecycleService {
                 .filter(completeAt -> !now.isBefore(completeAt)).isEmpty()) {
             return false;
         }
-        List<OrganizationMembership> memberships = lockMembershipsAndRequireTransfer(userId);
         revokePersonalCredentials(userId, now, "ACCOUNT_DELETED");
-        for (OrganizationMembership membership : memberships) {
-            if (membership.getStatus() != MembershipStatus.REVOKED
-                    && membership.getRole() != OrganizationRole.OWNER) {
-                MembershipStatus oldStatus = membership.getStatus();
-                OrganizationRole oldRole = membership.getRole();
-                membership.remove();
-                membershipRepository.save(membership);
-                membershipHistoryRepository.save(OrganizationMembershipHistory.record(
-                        membership, oldStatus, oldRole, userId, "account_deleted", now));
-            }
-            appendAudit(membership.getOrganization().getId(), userId, "account.deletion.completed",
-                    Map.of("accountId", userId.toString()));
+        String email = account.getEmail();
+        if (!accountDataPurgeRepository.purge(userId)) {
+            throw conflict("ACCOUNT_DELETION_NOT_DUE",
+                    "The account deletion grace period has not elapsed.");
         }
-
-        account.completeDeletion(now);
-        account.anonymizeForDeletion(passwordEncoder.encode(
-                UUID.randomUUID().toString() + UUID.randomUUID()), now);
-        accountRepository.save(account);
+        emailDelivery.sendAccountDeleted(email);
         return true;
-    }
-
-    @Transactional(readOnly = true)
-    public boolean hasOwnedOrganizations(UUID userId) {
-        return membershipRepository.existsByUserIdAndRole(userId, OrganizationRole.OWNER);
     }
 
     private UserAccount lockAccount(UUID userId) {
@@ -240,19 +234,6 @@ public class UserLifecycleService {
         mfaService.eraseCredentials(userId);
         passwordRecoveryService.revokeOutstanding(userId);
         apiKeyService.revokeCreatedByUserId(userId, now);
-    }
-
-    private void requireNoOwnedOrganizations(UUID userId) {
-        lockMembershipsAndRequireTransfer(userId);
-    }
-
-    private List<OrganizationMembership> lockMembershipsAndRequireTransfer(UUID userId) {
-        List<OrganizationMembership> memberships = membershipRepository.findAllByUserIdForUpdate(userId);
-        if (memberships.stream().anyMatch(membership -> membership.getRole() == OrganizationRole.OWNER)) {
-            throw conflict("ORGANIZATION_OWNERSHIP_TRANSFER_REQUIRED",
-                    "Transfer ownership of every organization before deleting this account.");
-        }
-        return memberships;
     }
 
     private void requireNotDeleted(UserAccount account) {

@@ -21,7 +21,7 @@ const lifecycleSteps: LifecycleStep[] = [
   { id: "create-environment", phase: "Discover", title: "Create environment", description: "Choose Sandbox for development before requesting Production.", destination: "environments", actionLabel: "Open environments" },
   { id: "generate-sandbox-key", phase: "Build & test", title: "Generate sandbox API key", description: "Create a restricted sandbox credential and store it securely.", destination: "api-keys", actionLabel: "Open API keys" },
   { id: "configure-auth", phase: "Build & test", title: "Configure authentication", description: "Add the authorization header and required scopes to your requests.", destination: "api-explorer", actionLabel: "View API examples" },
-  { id: "sandbox-request", phase: "Build & test", title: "Make sandbox request", description: "Use API Explorer to make a request to a supported backend endpoint.", destination: "api-explorer", actionLabel: "Open API Explorer" },
+  { id: "sandbox-request", phase: "Build & test", title: "Make sandbox request", description: "Use API Explorer to make a request to a supported system endpoint.", destination: "api-explorer", actionLabel: "Open API Explorer" },
   { id: "inspect-response", phase: "Build & test", title: "Inspect response", description: "Review the example response, schema, and status code.", destination: "api-explorer", actionLabel: "Inspect response examples" },
   { id: "debug-errors", phase: "Build & test", title: "Debug errors", description: "Use request logs and debugging tools to investigate failures.", destination: "debugging", actionLabel: "Open debugging" },
   { id: "configure-webhooks", phase: "Build & test", title: "Configure webhooks", description: "Choose event subscriptions, endpoint settings, and a retry policy.", destination: "webhooks", actionLabel: "Configure webhooks" },
@@ -30,10 +30,10 @@ const lifecycleSteps: LifecycleStep[] = [
   { id: "configure-security", phase: "Go live", title: "Configure security", description: "Review MFA, roles, allowlists, sessions, and credential handling.", destination: "security-center", actionLabel: "Review security" },
   { id: "request-production", phase: "Go live", title: "Create a production environment", description: "Provision a separate live environment; production access review applies only when enabled by your organization or deployment.", destination: "environments", actionLabel: "Add environment" },
   { id: "production-credentials", phase: "Go live", title: "Generate production credentials", description: "Create a key bound to the live environment and store it in your trusted server.", destination: "api-keys", actionLabel: "Open API keys" },
-  { id: "deploy-integration", phase: "Go live", title: "Launch integration", description: "Complete backend readiness checks and safely launch your Production integration.", destination: "go-live", actionLabel: "Open Go-Live" },
+  { id: "deploy-integration", phase: "Go live", title: "Launch integration", description: "Complete system readiness checks and safely launch your Production integration.", destination: "go-live", actionLabel: "Open Go-Live" },
   { id: "monitor-production", phase: "Operate & secure", title: "Monitor production", description: "Review production health, usage, logs, and incidents when connected.", destination: "go-live", actionLabel: "Open Go-Live" },
   { id: "rotate-credentials", phase: "Operate & secure", title: "Rotate credentials", description: "Replace credentials on schedule or when exposure is suspected.", destination: "api-keys", actionLabel: "Review credentials" },
-  { id: "revoke-credentials", phase: "Operate & secure", title: "Revoke credentials", description: "Revoke exposed or retired credentials using an authorized backend action.", destination: "api-keys", actionLabel: "Manage credentials" },
+  { id: "revoke-credentials", phase: "Operate & secure", title: "Revoke credentials", description: "Revoke exposed or retired credentials using an authorized system action.", destination: "api-keys", actionLabel: "Manage credentials" },
 ];
 
 const phases: LifecyclePhase[] = ["Discover", "Build & test", "Go live", "Operate & secure"];

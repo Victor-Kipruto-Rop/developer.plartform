@@ -344,9 +344,9 @@ token; they accept no user id:
 
 | Endpoint | Behavior |
 |---|---|
-| `GET /api/v1/account/lifecycle` | Returns account status and, while pending, the scheduled deletion time and any current ownership block. |
+| `GET /api/v1/account/lifecycle` | Returns account status and, while pending, the scheduled deletion time. |
 | `POST /api/v1/account/deactivate` | Requires `currentPassword` and, when MFA is enabled, a fresh `mfaCode`. Stops new authentication and revokes sessions, refresh families, MFA/recovery/reset credentials, and API keys created by this user. |
-| `POST /api/v1/account/deletion` | Requires step-up proof and ownership transfer for every organization. Starts a cancelable 30-day grace period. |
+| `POST /api/v1/account/deletion` | Requires step-up proof and starts a cancelable 30-day grace period. |
 | `POST /api/v1/account/deletion/cancel` | Requires step-up proof and cancels a pending deletion during the grace period. |
 | `POST /api/v1/account/export` | Requires step-up proof and returns a no-store JSON attachment. |
 
@@ -357,9 +357,10 @@ The export includes the caller's profile, membership metadata, and metadata for
 API keys they created. It never includes passwords, tokens, hashes, MFA values,
 or organization project/resource payloads.
 
-Deletion completion runs after 30 days. Ownership is checked both when a request
-is made and immediately before completion; if ownership has changed in the
-meantime, completion remains blocked until it is transferred. Completion revokes
-the user's credentials, removes only their non-owner memberships, preserves
-shared organizations/resources and append-only histories, anonymizes profile
-fields, and leaves a terminal deleted account reference for audit integrity.
+Deletion completion runs after 30 days. Completion revokes the user's credentials
+and transactionally removes the account, every organization the account owned or
+belonged to, all organization-scoped records (including records belonging to
+other members), and linked append-only history. Other members' user accounts and
+data outside those organizations remain. Platform-wide support articles remain
+available with the deleted author's reference removed. A failed purge rolls back
+as a unit and can be retried by the deletion scheduler.

@@ -328,7 +328,7 @@ export function DashboardMonitor({ onNavigate }: { onNavigate: (page: PageId) =>
       <section className="panel live-status-panel" aria-label="Live platform status">
         <div className="live-status-main">
           <span className={`live-status-dot live-status-dot--${readiness}`} />
-          <div><strong>{readinessLabel}</strong><small>{readiness === "unavailable" ? `Readiness check failed: ${readinessError ?? "unknown error"}. This alone does not confirm an incident.` : "Backend readiness · checked every 30 seconds."}</small></div>
+          <div><strong>{readinessLabel}</strong><small>{readiness === "unavailable" ? `Readiness check failed: ${readinessError ?? "unknown error"}. This alone does not confirm an incident.` : "System readiness · checked every 30 seconds."}</small></div>
         </div>
         <a className="text-button" href={externalLinks.status} target="_blank" rel="noreferrer">Public status page</a>
       </section>

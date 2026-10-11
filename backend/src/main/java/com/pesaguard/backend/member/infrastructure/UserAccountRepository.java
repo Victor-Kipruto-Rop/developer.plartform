@@ -34,6 +34,10 @@ public interface UserAccountRepository extends JpaRepository<UserAccount, UUID> 
     @Query("select account from UserAccount account where account.loginMfaChallengeId = :challengeId")
     Optional<UserAccount> findByLoginMfaChallengeIdForUpdate(@Param("challengeId") UUID challengeId);
 
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select account from UserAccount account where account.passwordChangeChallengeId = :challengeId")
+    Optional<UserAccount> findByPasswordChangeChallengeIdForUpdate(@Param("challengeId") UUID challengeId);
+
     /**
      * Lookup by outstanding verification hash.
      *
@@ -53,5 +57,14 @@ public interface UserAccountRepository extends JpaRepository<UserAccount, UUID> 
             order by account.deletionRequestedAt asc
             """)
     List<UserAccount> findPendingDeletionBefore(
+            @Param("status") UserStatus status, @Param("cutoff") Instant cutoff);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("""
+            select account from UserAccount account
+            where account.status = :status and account.deactivatedUntil <= :cutoff
+            order by account.deactivatedUntil asc
+            """)
+    List<UserAccount> findPausedAccountsDue(
             @Param("status") UserStatus status, @Param("cutoff") Instant cutoff);
 }

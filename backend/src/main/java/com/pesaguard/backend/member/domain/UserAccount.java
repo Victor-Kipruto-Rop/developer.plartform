@@ -50,6 +50,9 @@ public class UserAccount {
     @Column(name = "deletion_requested_at")
     private Instant deletionRequestedAt;
 
+    @Column(name = "deactivated_until")
+    private Instant deactivatedUntil;
+
     /**
      * When the address was proven to belong to this developer.
      *
@@ -89,6 +92,21 @@ public class UserAccount {
 
     @Column(name = "login_mfa_attempts", nullable = false)
     private int loginMfaAttempts;
+
+    @Column(name = "password_change_challenge_id", unique = true)
+    private UUID passwordChangeChallengeId;
+
+    @Column(name = "password_change_session_id")
+    private UUID passwordChangeSessionId;
+
+    @Column(name = "password_change_code_hash", length = 64)
+    private String passwordChangeCodeHash;
+
+    @Column(name = "password_change_issued_at")
+    private Instant passwordChangeIssuedAt;
+
+    @Column(name = "password_change_attempts", nullable = false)
+    private int passwordChangeAttempts;
 
     @Column(name = "last_accessed_workspace_id")
     private UUID lastAccessedWorkspaceId;
@@ -202,6 +220,7 @@ public class UserAccount {
             throw new IllegalStateException("A deleted account cannot be suspended");
         }
         this.status = UserStatus.SUSPENDED;
+        this.deactivatedUntil = null;
         this.updatedAt = now;
     }
 
@@ -217,6 +236,7 @@ public class UserAccount {
                     "Cancel the pending deletion before restoring the account");
         }
         this.status = UserStatus.ACTIVE;
+        this.deactivatedUntil = null;
         this.updatedAt = now;
     }
 
@@ -227,15 +247,29 @@ public class UserAccount {
      * performing this transition.
      */
     public void deactivate(Instant now) {
+        deactivate(now, null);
+    }
+
+    public void deactivate(Instant now, Instant until) {
         if (status == UserStatus.DELETED) {
             throw new IllegalStateException("A deleted account cannot be deactivated");
         }
         this.status = UserStatus.DEACTIVATED;
+        this.deactivatedUntil = until;
         this.emailVerificationHash = null;
         this.emailVerificationIssuedAt = null;
         this.emailVerificationAttempts = 0;
+        clearPasswordChange(now);
         clearLoginMfa(now);
         this.updatedAt = now;
+    }
+
+    public Instant getDeactivatedUntil() {
+        return deactivatedUntil;
+    }
+
+    public boolean isPauseDue(Instant now) {
+        return status == UserStatus.DEACTIVATED && deactivatedUntil != null && !deactivatedUntil.isAfter(now);
     }
 
     /**
@@ -260,6 +294,7 @@ public class UserAccount {
         this.emailVerificationHash = null;
         this.emailVerificationIssuedAt = null;
         this.emailVerificationAttempts = 0;
+        clearPasswordChange(now);
         clearLoginMfa(now);
         this.updatedAt = now;
     }
@@ -342,6 +377,60 @@ public class UserAccount {
 
     public int getLoginMfaAttempts() {
         return loginMfaAttempts;
+    }
+
+    public UUID getPasswordChangeChallengeId() {
+        return passwordChangeChallengeId;
+    }
+
+    public UUID getPasswordChangeSessionId() {
+        return passwordChangeSessionId;
+    }
+
+    public String getPasswordChangeCodeHash() {
+        return passwordChangeCodeHash;
+    }
+
+    public Instant getPasswordChangeIssuedAt() {
+        return passwordChangeIssuedAt;
+    }
+
+    public int getPasswordChangeAttempts() {
+        return passwordChangeAttempts;
+    }
+
+    public void issuePasswordChangeChallenge(UUID challengeId, UUID sessionId, String codeHash, Instant now) {
+        if (challengeId == null || sessionId == null || codeHash == null || codeHash.isBlank()) {
+            throw new IllegalArgumentException("A password change verification challenge is required.");
+        }
+        passwordChangeChallengeId = challengeId;
+        passwordChangeSessionId = sessionId;
+        passwordChangeCodeHash = codeHash;
+        passwordChangeIssuedAt = now;
+        passwordChangeAttempts = 0;
+        updatedAt = now;
+    }
+
+    public boolean matchesPasswordChangeChallenge(UUID challengeId, UUID sessionId, String codeHash) {
+        return passwordChangeChallengeId != null && passwordChangeChallengeId.equals(challengeId)
+                && passwordChangeSessionId != null && passwordChangeSessionId.equals(sessionId)
+                && passwordChangeCodeHash != null && codeHash != null
+                && MessageDigest.isEqual(
+                        passwordChangeCodeHash.getBytes(StandardCharsets.US_ASCII),
+                        codeHash.getBytes(StandardCharsets.US_ASCII));
+    }
+
+    public int recordPasswordChangeFailure() {
+        return ++passwordChangeAttempts;
+    }
+
+    public void clearPasswordChange(Instant now) {
+        passwordChangeChallengeId = null;
+        passwordChangeSessionId = null;
+        passwordChangeCodeHash = null;
+        passwordChangeIssuedAt = null;
+        passwordChangeAttempts = 0;
+        updatedAt = now;
     }
 
     public void issueLoginMfa(UUID challengeId, UUID organizationId, String codeHash, Instant now) {
@@ -442,6 +531,8 @@ public class UserAccount {
         }
         this.status = UserStatus.PENDING_DELETION;
         this.deletionRequestedAt = now;
+        this.deactivatedUntil = null;
+        clearPasswordChange(now);
         clearLoginMfa(now);
         this.updatedAt = now;
     }
@@ -469,6 +560,7 @@ public class UserAccount {
             throw new IllegalStateException("This account has no pending deletion");
         }
         this.status = UserStatus.DELETED;
+        this.deactivatedUntil = null;
         this.updatedAt = now;
     }
 
@@ -514,6 +606,7 @@ public class UserAccount {
             throw new IllegalArgumentException("An encoded password is required");
         }
         this.passwordHash = encodedPassword;
+        clearPasswordChange(now);
         clearLoginMfa(now);
         this.updatedAt = now;
     }

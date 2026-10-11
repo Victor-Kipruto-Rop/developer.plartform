@@ -52,7 +52,7 @@ export function SecurityEventsPage() {
       />
       {error && <p className="notification-alert" role="alert">{error}</p>}
       <section className="panel table-panel">
-        <div className="panel-heading"><div><h2>Security-related audit records</h2><p>{securityEvents.length} matching records in the latest {events.length} audit entries loaded</p></div><span className="table-tag">BACKEND</span></div>
+        <div className="panel-heading"><div><h2>Security-related audit records</h2><p>{securityEvents.length} matching records in the latest {events.length} audit entries loaded</p></div><span className="table-tag">SYSTEM</span></div>
         {loading && events.length === 0
           ? <p className="security-empty-state">Loading audit records…</p>
           : securityEvents.length === 0
