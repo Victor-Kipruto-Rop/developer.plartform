@@ -1,24 +1,19 @@
 # Remaining Work — Developer Platform
 
-Verified against the current repository sources. Database migration and full
-integration-suite execution still need confirmation in a PostgreSQL-enabled
-environment.
+Status: **NOT RELEASE-APPROVED — current production evidence is incomplete.**
 
----
+This document describes unresolved work. It must be read alongside `docs/production-gate-register.md`, which contains historical test and migration claims that conflict with some items below. Those snapshots have not been reconciled against the exact current `main` commit.
 
-## 0. The blocking item
+During the 2026-10-13 audit, the latest observed GitHub Actions run failed in backend, frontend, container image, and static-analysis jobs. The connected GitHub interface returned no usable job logs, so the failure causes remain unknown. Older passing test counts are not current release evidence.
 
-The current migration chain has not been verified against PostgreSQL in this
-work session. Constraints, foreign keys, triggers, seed rows, and Hibernate
-mappings still require a real database migration and integration run.
+## 0. Blocking verification items
 
-This is not one task among many. Until a database runs, every other item below
-is unproven rather than unfinished, and the ordering matters: fixing schema or
-service code before validating the migrations risks building on a broken
-foundation.
+- Run CI on the exact release candidate and diagnose each failed job using its logs.
+- Run the full Gradle suite with PostgreSQL/Testcontainers enabled and verify the complete Flyway migration chain on a fresh database.
+- Reconcile discrepancies between this file, the production gate register, the README, and actual code/tests.
+- Verify protected staging and production environments, a successful staging rollout, backup restore, production email delivery, and provider callbacks in the real target environment.
 
-**First task: run `docker compose up` and execute the full suite with Docker
-available.** Everything else is cheaper to do afterwards.
+Do not infer that a capability is complete from a class, endpoint declaration, migration, or historical document alone.
 
 ---
 

@@ -1,25 +1,22 @@
 # Production Gate Register
 
-Rule applied: **every checklist item is either implemented and tested, or
-explicitly documented as intentionally out of scope.**
+Status: **NOT RELEASE-APPROVED — current evidence is incomplete and internally inconsistent.**
 
-Current: **761 tests, 0 failures, 0 skipped. 28 migrations, all applied
-successfully against PostgreSQL 15.**
+## Evidence integrity warning (2026-10-13)
 
-**Section E is resolved.** The structural blocker is gone. Verified with Docker
-running: `DeveloperPlatformIntegrationTest` executes all 10 tests against
-Testcontainers PostgreSQL, `skipped=0`, Flyway applies every migration, and
-Hibernate `ddl-auto: validate` accepts the resulting schema. `ci.yml`'s
-skip-assertion can now pass.
+This document contains historical verification snapshots, not a single reproducible current release report. Do not use the test counts below as proof that the current `main` commit is green.
 
-Update history: originally recorded at 607 tests / 16 migrations. V19 (developer
-identity verification), V20 (account deletion workflow), V21 (environment
-credential fingerprint uniqueness), V22 (JPA version columns), V23 (throttle
-subject types) and V24 (usage project scope) were added since.
+- The prior summary reports 761 tests with zero skips and 28 migrations applied against PostgreSQL 15.
+- The README's separately dated workspace report (2026-10-07) reports a different test count and skipped Docker-dependent tests.
+- This document's own Section B says sandbox/production isolation was not enforced and multi-tenancy rules were never executed, which conflicts with the resolved-schema claim above.
+- The latest workflow run inspected during the 2026-10-13 audit failed in backend, frontend, image, and static-analysis jobs. The connected GitHub interface did not provide downloadable job logs, so root causes could not be established.
+- A successful fresh PostgreSQL/Testcontainers run against the exact current release commit, protected staging deployment, restore drill, email delivery, and provider checks have not been verified during this audit.
 
-The distinction that determines pass/fail is no longer "does it exist" — it is
-"if it does not exist, was that a decision or an omission." This register makes
-every such decision explicit.
+Until these statements are reconciled with fresh CI artifacts and runtime evidence, treat every row in this register as a claim to re-validate rather than a release sign-off.
+
+## Historical register snapshot
+
+The following sections preserve previously recorded implementation notes and test evidence. Their age and internal conflicts mean they must not override the evidence-integrity warning above.
 
 ---
 
