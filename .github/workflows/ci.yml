@@ -79,7 +79,7 @@ jobs:
         with:
           gradle-build-file: backend/build.gradle
       - name: Fail on vulnerable dependencies, secrets, and misconfiguration
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           scan-type: fs
           scan-ref: backend
@@ -165,7 +165,7 @@ jobs:
           cache-to: type=gha,mode=max
       - name: Scan pull-request image
         if: github.event_name == 'pull_request'
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           scan-type: image
           image-ref: ${{ steps.image.outputs.name }}:sha-${{ github.sha }}
@@ -173,7 +173,7 @@ jobs:
           exit-code: '1'
       - name: Scan published immutable image
         if: github.event_name == 'push'
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           scan-type: image
           image-ref: ${{ steps.image.outputs.name }}@${{ steps.build.outputs.digest }}
@@ -181,7 +181,7 @@ jobs:
           exit-code: '1'
       - name: Generate SBOM for the published image digest
         if: github.event_name == 'push'
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           scan-type: image
           image-ref: ${{ steps.image.outputs.name }}@${{ steps.build.outputs.digest }}
@@ -208,12 +208,12 @@ jobs:
       - name: Initialize CodeQL
         uses: github/codeql-action/init@v3
         with:
-          languages: java
+          languages: java-kotlin
           queries: security-and-quality
       - name: Perform CodeQL analysis
         uses: github/codeql-action/analyze@v3
         with:
-          category: '/language:java'
+          category: '/language:java-kotlin'
 
   staging:
     needs: [backend, frontend, image, sast]
