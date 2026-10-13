@@ -31,7 +31,8 @@ jobs:
         # GitHub-hosted runners have Docker, so the Testcontainers PostgreSQL suite
         # executes here for real. If that ever silently stops happening, the suite
         # would report "skipped" instead of failing, so assert the count below.
-        run: set -o pipefail
+        run: |
+          set -o pipefail
           ./gradlew test --no-daemon --stacktrace 2>&1 | tee ../backend-test.log
       - name: Assert database-backed tests actually ran
         working-directory: backend
