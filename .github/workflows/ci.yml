@@ -31,7 +31,9 @@ jobs:
         # GitHub-hosted runners have Docker, so the Testcontainers PostgreSQL suite
         # executes here for real. If that ever silently stops happening, the suite
         # would report "skipped" instead of failing, so assert the count below.
-        run: ./gradlew test --no-daemon --stacktrace
+        run: |
+          set -o pipefail
+          ./gradlew test --no-daemon --stacktrace 2>&1 | tee ../backend-test.log
       - name: Assert database-backed tests actually ran
         working-directory: backend
         run: |
@@ -85,6 +87,17 @@ jobs:
           severity: HIGH,CRITICAL
           ignore-unfixed: true
           exit-code: '1'
+      - name: Retain backend diagnostics on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-failure-diagnostics-${{ github.run_id }}
+          path: |
+            backend-test.log
+            backend/build/reports/tests/test/
+            backend/build/test-results/test/
+          if-no-files-found: ignore
+          retention-days: 14
 
   frontend:
     runs-on: ubuntu-latest
@@ -101,11 +114,22 @@ jobs:
       - name: Install dependencies
         run: npm ci
       - name: Type-check frontend
-        run: npm run typecheck
+        run: npm run typecheck 2>&1 | tee frontend-typecheck.log
       - name: Run frontend unit tests
-        run: npm test
+        run: npm test 2>&1 | tee frontend-test.log
       - name: Build frontend
-        run: npm run build
+        run: npm run build 2>&1 | tee frontend-build.log
+      - name: Retain frontend diagnostics on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-failure-diagnostics-${{ github.run_id }}
+          path: |
+            frontend/frontend-typecheck.log
+            frontend/frontend-test.log
+            frontend/frontend-build.log
+          if-no-files-found: ignore
+          retention-days: 14
 
   image:
     runs-on: ubuntu-latest
