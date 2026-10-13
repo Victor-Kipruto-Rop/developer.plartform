@@ -1,11 +1,10 @@
 # Production Gate Audit
 
-Against the 42-section PesaGuard Developer Platform checklist.
-**607 tests, 0 failures, 10 skipped. 16 migrations, none applied.**
+Status: **HISTORICAL AUDIT SNAPSHOT — NOT A CURRENT RELEASE DECISION.**
 
-Gate rule: every item must be *implemented and tested*, or *explicitly out of
-scope*. Verdict key: **MET** / **PARTIAL** (built, unwired or unverified) /
-**ABSENT** (does not exist) / **GATE FAIL** (claimed or implied but not evidenced).
+This report records an earlier repository state (607 tests, 10 skipped, 16 migrations). It conflicts with later documents and source changes, including later reported migration/test results and newer email-delivery, rate-limit, webhook, and deployment work. Some findings below may therefore be stale and must be re-tested against the exact release commit before being treated as open defects or resolved controls.
+
+For the current release decision, use `docs/production-release-gate.md` and the evidence-integrity warning in `docs/production-gate-register.md`. During the 2026-10-13 audit, the latest observed workflow run failed in backend, frontend, image, and static-analysis jobs; job logs were unavailable through the connected interface. **The current release remains unverified until fresh CI and target-environment evidence is attached.**
 
 ---
 
