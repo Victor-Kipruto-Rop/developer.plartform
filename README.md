@@ -116,6 +116,7 @@ Personal developer preferences are available at `/api/v1/developer/preferences`.
 - `docs/environment-access-policies.md` — role-specific environment access and policy API;
 - `docs/go-live.md` — Production readiness checks, verification, launch authorization, and launch history;
 - `docs/operations.md` — health, deployment, backup, and incident notes.
+- `docs/production-release-gate.md` — evidence required before a production release is authorized.
 
 ## Multi-organization login
 
