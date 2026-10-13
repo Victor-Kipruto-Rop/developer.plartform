@@ -30,7 +30,7 @@ This repository contains the standalone Java 21/Spring Boot backend for the Pesa
 Changelog entries are not generated from commits or seeded as sample releases.
 Only verified shipped changes should be authored and published through the
 operator workflow described in [Changelog publishing](docs/changelog-publishing.md);
-until then, the developer portal correctly shows an empty feed.
+until then, the developer portal correctly shows an empty feed
 
 Payment execution for the developer-facing sandbox transaction API, production transaction processing, and webhook ingestion for API transaction events are not implemented. The separate platform invoice checkout and manual settlement workflows do not invent plans, prices, invoices, or balances. The sandbox transactions endpoint does not generate sample transactions or simulate payments.
 
