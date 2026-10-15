@@ -95,8 +95,8 @@ response rather than asking developers to configure a PesaGuard host:
 
 | Environment | Official Base URL |
 | --- | --- |
-| `DEVELOPMENT`, `SANDBOX`, `STAGING` | `https://sandbox-api.pesaguard.victorkipruto.com` |
-| `PRODUCTION` | `https://api.pesaguard.victorkipruto.com` |
+| `DEVELOPMENT`, `SANDBOX`, `STAGING` | `https://sandbox-api.pesaguard.co.ke` |
+| `PRODUCTION` | `https://api.pesaguard.co.ke` |
 
 An API key is bound to its project environment. Send it as a Bearer credential
 only to the returned Base URL; the server rejects a key presented at the other
@@ -128,7 +128,7 @@ credential lifecycle request rather than silently leaving services divergent.
 
 ```bash
 curl --request GET \
-  "https://sandbox-api.pesaguard.victorkipruto.com/api/v1/sandbox/transactions" \
+  "https://sandbox-api.pesaguard.co.ke/api/v1/sandbox/transactions" \
   --header "Accept: application/json" \
   --header "Authorization: Bearer ${PESAGUARD_API_KEY}"
 ```

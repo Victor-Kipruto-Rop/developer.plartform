@@ -83,6 +83,15 @@ Run from `backend`:
 
 The Testcontainers integration suite uses PostgreSQL and is marked to skip when Docker is unavailable. Unit tests do not require Docker.
 
+## Render staging
+
+The Java backend has a Render Blueprint at [`render.yaml`](./render.yaml).
+It is intended to be added to the same Render workspace/project as the existing
+PesaGuard Core API service, while keeping the two application repositories and
+databases separate. See [Render staging setup](./docs/deployment/RENDER_STAGING.md)
+before syncing it. The Blueprint provisions paid staging resources; it does not
+deploy automatically.
+
 ## Runtime configuration
 
 The authoritative configuration names are in `backend/src/main/resources/application.yml`. The service uses `DATABASE_URL`, `DATABASE_USERNAME`, and `DATABASE_PASSWORD`; the Compose file maps its `POSTGRES_*` variables to those application variables. Registration is disabled by default. Set `PESAGUARD_REGISTRATION_ENABLED=true` only in an approved local/test environment.

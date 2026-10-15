@@ -1,0 +1,87 @@
+services:
+  - type: web
+    name: pesaguard-developer-platform-staging
+    runtime: docker
+    plan: starter
+    region: frankfurt
+    branch: deploy/render-staging
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    autoDeployTrigger: "off"
+    healthCheckPath: /health/ready
+    envVars:
+      - key: SPRING_PROFILES_ACTIVE
+        value: production
+      - key: DATABASE_URL
+        fromDatabase:
+          name: pesaguard-developer-platform-staging-db
+          property: connectionString
+      - key: DATABASE_USERNAME
+        fromDatabase:
+          name: pesaguard-developer-platform-staging-db
+          property: user
+      - key: DATABASE_PASSWORD
+        fromDatabase:
+          name: pesaguard-developer-platform-staging-db
+          property: password
+      - key: SPRING_DATA_REDIS_URL
+        fromService:
+          name: pesaguard-developer-platform-staging-redis
+          type: keyvalue
+          property: connectionString
+      - key: PESAGUARD_CREDENTIAL_HMAC_KEY
+        generateValue: true
+      - key: PESAGUARD_AUDIT_HMAC_KEY
+        generateValue: true
+      - key: PESAGUARD_OPERATOR_HMAC_KEY
+        generateValue: true
+      - key: PESAGUARD_JWT_PRIVATE_KEY
+        sync: false
+      - key: PESAGUARD_JWT_PUBLIC_KEY
+        sync: false
+      - key: PESAGUARD_ALLOWED_ORIGINS
+        value: https://developers.pesaguard.co.ke
+      - key: PESAGUARD_WEBAUTHN_RP_ID
+        value: developers.pesaguard.co.ke
+      - key: PESAGUARD_WEBAUTHN_ORIGINS
+        value: https://developers.pesaguard.co.ke
+      - key: PESAGUARD_EMAIL_VERIFICATION_URL
+        value: https://developers.pesaguard.co.ke/
+      - key: PESAGUARD_PIPELINE_KEY_SYNC_URL
+        value: https://api.pesaguard.co.ke/internal/v1/developer-api-keys/sync
+      - key: PESAGUARD_PIPELINE_KEY_SYNC_SECRET
+        sync: false
+      - key: PESAGUARD_PIPELINE_KEY_SYNC_REQUIRED
+        value: "true"
+      - key: PESAGUARD_REGISTRATION_ENABLED
+        value: "false"
+      - key: PESAGUARD_API_KEY_ALLOW_LOCAL_HOST
+        value: "false"
+      - key: PESAGUARD_FEATURE_PRODUCTION_ACCESS
+        value: "false"
+      - key: PESAGUARD_FEATURE_BILLING
+        value: "false"
+      - key: PESAGUARD_MESSAGING_ENABLED
+        value: "false"
+      - key: PESAGUARD_EMAIL_PROVIDER
+        value: resend
+      - key: PESAGUARD_MAIL_FROM
+        value: no-reply@pesaguard.co.ke
+      - key: RESEND_API_KEY
+        sync: false
+      - key: SUPPORT_TICKET_EMAIL
+        sync: false
+
+  - type: keyvalue
+    name: pesaguard-developer-platform-staging-redis
+    plan: starter
+    region: frankfurt
+    ipAllowList: []
+
+databases:
+  - name: pesaguard-developer-platform-staging-db
+    plan: basic-256mb
+    region: frankfurt
+    databaseName: pesaguard_developer_staging
+    user: pesaguard_developer_staging
+    ipAllowList: []
