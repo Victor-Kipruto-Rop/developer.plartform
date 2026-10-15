@@ -47,9 +47,9 @@ server stores only its HMAC. Copy and retain the key before navigating away.
 The response also includes the selected template, its first endpoint, and the
 official server-assigned `baseUrl` for that key's environment. The first-run key
 is bound to `SANDBOX` and uses
-`https://sandbox-api.pesaguard.victorkipruto.com`; the portal displays the URL,
+`https://sandbox-api.pesaguard.co.ke`; the portal displays the URL,
 Bearer authentication method, endpoint, and copy action with the one-time key.
-Production environments use `https://api.pesaguard.victorkipruto.com`.
+Production environments use `https://api.pesaguard.co.ke`.
 Developers should never enter a PesaGuard API host manually.
 The frontend does not call the sandbox transactions fixture as an onboarding
 gate; dashboard access is based on the backend's persisted workspace status.
@@ -58,7 +58,7 @@ The sandbox transactions endpoint validates API-key authentication and sandbox
 authorization:
 
 ```http
-GET https://sandbox-api.pesaguard.victorkipruto.com/api/v1/sandbox/transactions
+GET https://sandbox-api.pesaguard.co.ke/api/v1/sandbox/transactions
 Authorization: Bearer pgk_...
 ```
 

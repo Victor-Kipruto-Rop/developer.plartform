@@ -14,8 +14,8 @@ import com.pesaguard.backend.environment.domain.EnvironmentType;
  */
 public final class EnvironmentApiBaseUrls {
 
-    public static final String SANDBOX = "https://sandbox-api.pesaguard.victorkipruto.com";
-    public static final String PRODUCTION = "https://api.pesaguard.victorkipruto.com";
+    public static final String SANDBOX = "https://sandbox-api.pesaguard.co.ke";
+    public static final String PRODUCTION = "https://api.pesaguard.co.ke";
 
     private EnvironmentApiBaseUrls() {
     }

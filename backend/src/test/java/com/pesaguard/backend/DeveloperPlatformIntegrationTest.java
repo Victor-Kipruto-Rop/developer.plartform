@@ -73,7 +73,7 @@ class DeveloperPlatformIntegrationTest {
         registry.add("spring.datasource.password", POSTGRES::getPassword);
         registry.add("pesaguard.security.credential-hmac-key", () -> CREDENTIAL_KEY);
         registry.add("pesaguard.security.audit-hmac-key", () -> AUDIT_KEY);
-        registry.add("pesaguard.security.allowed-origins", () -> "https://developers.pesaguard.victorkipruto.com");
+        registry.add("pesaguard.security.allowed-origins", () -> "https://developers.pesaguard.co.ke");
         registry.add("pesaguard.security.registration-enabled", () -> "true");
         registry.add("pesaguard.runtime.maintenance-mode", () -> "false");
         registry.add("pesaguard.organization.invitation-email-dispatch-ms", () -> "3600000");
@@ -350,7 +350,7 @@ class DeveloperPlatformIntegrationTest {
                 .andExpect(header().string("Cache-Control", "no-store"))
                 .andExpect(jsonPath("$.data.key", containsString("pgk_")))
                 .andExpect(jsonPath("$.data.baseUrl").value(
-                        "https://sandbox-api.pesaguard.victorkipruto.com"))
+                        "https://sandbox-api.pesaguard.co.ke"))
                 .andReturn().getResponse().getContentAsString();
         String keyId = jsonValue(keyResponse, "id");
 
@@ -362,7 +362,7 @@ class DeveloperPlatformIntegrationTest {
                         .content("{\"name\":\"local-worker\",\"scopes\":[\"developer:read\"],\"expiresIn\":\"PT24H\"}"))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.data.baseUrl").value(
-                        "https://sandbox-api.pesaguard.victorkipruto.com"));
+                        "https://sandbox-api.pesaguard.co.ke"));
 
         mockMvc.perform(get("/api/v1/projects/{projectId}/environments/{environmentId}/api-keys", projectId, environmentId)
                         .header("Authorization", "Bearer " + token))
@@ -875,7 +875,7 @@ class DeveloperPlatformIntegrationTest {
                         .content("{\"name\":\"sandbox\",\"type\":\"SANDBOX\"}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.baseUrl").value(
-                        "https://sandbox-api.pesaguard.victorkipruto.com"))
+                        "https://sandbox-api.pesaguard.co.ke"))
                 .andReturn().getResponse().getContentAsString();
         return jsonValue(response, "id");
     }

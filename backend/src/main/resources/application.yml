@@ -65,7 +65,7 @@ pesaguard:
   email:
     provider: ${PESAGUARD_EMAIL_PROVIDER:smtp}
     from: ${PESAGUARD_MAIL_FROM:no-reply@pesaguard.co.ke}
-    verification-url: ${PESAGUARD_EMAIL_VERIFICATION_URL:https://developers.pesaguard.victorkipruto.com/}
+    verification-url: ${PESAGUARD_EMAIL_VERIFICATION_URL:https://developers.pesaguard.co.ke/}
   support:
     notification-email: ${SUPPORT_TICKET_EMAIL:support@pesaguard.co.ke}
   runtime:
@@ -91,7 +91,7 @@ pesaguard:
     allow-local-sandbox-host: ${PESAGUARD_API_KEY_ALLOW_LOCAL_HOST:true}
   identity:
     from-email: ${PESAGUARD_MAIL_FROM:no-reply@pesaguard.co.ke}
-    verification-url: ${PESAGUARD_EMAIL_VERIFICATION_URL:https://developers.pesaguard.victorkipruto.com/}
+    verification-url: ${PESAGUARD_EMAIL_VERIFICATION_URL:https://developers.pesaguard.co.ke/}
   oauth:
     authorization-code-ttl: ${PESAGUARD_OAUTH_CODE_TTL:PT5M}
     access-token-ttl: ${PESAGUARD_OAUTH_ACCESS_TOKEN_TTL:PT15M}
@@ -258,6 +258,7 @@ pesaguard:
     manual-instructions: ${PESAGUARD_BILLING_MANUAL_INSTRUCTIONS:}
 
 server:
+  port: ${PORT:8080}
   address: ${SERVER_ADDRESS:0.0.0.0}
   shutdown: graceful
   error:

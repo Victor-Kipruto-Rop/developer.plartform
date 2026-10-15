@@ -158,12 +158,12 @@ class ApiKeySecurityTest {
 
     @Test
     void sandboxKeyIsRejectedOnProductionApiHost() {
-        assertHostMismatch(EnvironmentType.SANDBOX, "api.pesaguard.victorkipruto.com");
+        assertHostMismatch(EnvironmentType.SANDBOX, "api.pesaguard.co.ke");
     }
 
     @Test
     void productionKeyIsRejectedOnSandboxApiHost() {
-        assertHostMismatch(EnvironmentType.PRODUCTION, "sandbox-api.pesaguard.victorkipruto.com");
+        assertHostMismatch(EnvironmentType.PRODUCTION, "sandbox-api.pesaguard.co.ke");
     }
 
     @Test
@@ -204,7 +204,7 @@ class ApiKeySecurityTest {
                 any(), any(), any())).thenReturn(Optional.of(environment));
         HttpServletRequest request = mock(HttpServletRequest.class);
         when(request.getRemoteAddr()).thenReturn("203.0.113.5");
-        when(request.getServerName()).thenReturn("sandbox-api.pesaguard.victorkipruto.com");
+        when(request.getServerName()).thenReturn("sandbox-api.pesaguard.co.ke");
 
         assertThat(authenticator.authenticateKeyForRequest("secret", request)).isPresent();
     }
@@ -240,7 +240,7 @@ class ApiKeySecurityTest {
                 any(), any(), any())).thenReturn(Optional.of(environment));
         HttpServletRequest request = mock(HttpServletRequest.class);
         when(request.getRemoteAddr()).thenReturn("203.0.113.5");
-        when(request.getServerName()).thenReturn("api.pesaguard.victorkipruto.com");
+        when(request.getServerName()).thenReturn("api.pesaguard.co.ke");
 
         assertThatThrownBy(() -> authenticator.authenticateKeyForRequest("secret", request))
                 .isInstanceOfSatisfying(BusinessException.class,
@@ -260,7 +260,7 @@ class ApiKeySecurityTest {
                 key.getOrganizationId(), key.getProjectId(), key.getEnvironmentId(), "LIVE")).thenReturn(true);
         HttpServletRequest request = mock(HttpServletRequest.class);
         when(request.getRemoteAddr()).thenReturn("203.0.113.5");
-        when(request.getServerName()).thenReturn("api.pesaguard.victorkipruto.com");
+        when(request.getServerName()).thenReturn("api.pesaguard.co.ke");
 
         assertThat(authenticator.authenticateKeyForRequest("secret", request)).isPresent();
     }
@@ -276,7 +276,7 @@ class ApiKeySecurityTest {
                 any(), any(), any())).thenReturn(Optional.of(environment));
         HttpServletRequest request = mock(HttpServletRequest.class);
         when(request.getRemoteAddr()).thenReturn("203.0.113.5");
-        when(request.getServerName()).thenReturn("api.pesaguard.victorkipruto.com");
+        when(request.getServerName()).thenReturn("api.pesaguard.co.ke");
 
         assertThatThrownBy(() -> authenticator.authenticateKeyForRequest("secret", request))
                 .isInstanceOfSatisfying(BusinessException.class,

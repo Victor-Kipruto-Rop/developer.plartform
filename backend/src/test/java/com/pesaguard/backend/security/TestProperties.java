@@ -26,7 +26,7 @@ public final class TestProperties {
 
     public static ApplicationProperties.Security security() {
         return new ApplicationProperties.Security(
-                List.of(URI.create("https://developers.pesaguard.victorkipruto.com")),
+                List.of(URI.create("https://developers.pesaguard.co.ke")),
                 Duration.ofHours(8),
                 Duration.ofDays(30),
                 Duration.ofMinutes(30),

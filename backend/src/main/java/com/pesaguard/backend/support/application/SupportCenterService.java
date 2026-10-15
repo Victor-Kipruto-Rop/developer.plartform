@@ -48,8 +48,8 @@ public class SupportCenterService {
     @Transactional(readOnly = true)
     public SupportCenterView overview() {
         return new SupportCenterView(
-                "https://docs.pesaguard.victorkipruto.com",
-                "https://status.pesaguard.victorkipruto.com",
+                "https://docs.pesaguard.co.ke",
+                "https://status.pesaguard.co.ke",
                 "https://github.com/Victor-Kipruto-Rop/status.pesaguard.victorkipruto.com/discussions",
                 categories(),
                 articleRepository.findTop5ByStatusOrderByPublishedAtDesc("PUBLISHED")

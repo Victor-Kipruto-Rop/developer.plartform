@@ -48,7 +48,7 @@ class Argon2EncoderParametersTest {
 
     private static PasswordEncoder encoderWith(int memoryKib, int iterations, int parallelism) {
         ApplicationProperties.Security security = new ApplicationProperties.Security(
-                List.of(URI.create("https://developers.pesaguard.victorkipruto.com")),
+                List.of(URI.create("https://developers.pesaguard.co.ke")),
                 Duration.ofHours(8),
                 Duration.ofDays(30),
                 Duration.ofMinutes(30),
